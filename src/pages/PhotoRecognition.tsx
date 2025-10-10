@@ -4,10 +4,23 @@ import { Card } from "@/components/ui/card";
 import { Camera, Upload, Loader2 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import RecipeCard from "@/components/RecipeCard";
+
+interface Dish {
+  name: string;
+  description: string;
+  ingredients: string[];
+  steps: string[];
+  cuisine: string;
+  difficulty: string;
+  cookTime: string;
+}
 
 const PhotoRecognition = () => {
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [dish, setDish] = useState<Dish | null>(null);
   const { toast } = useToast();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,16 +45,26 @@ const PhotoRecognition = () => {
     }
 
     setLoading(true);
+    setDish(null);
     try {
-      // TODO: Call AI edge function for image recognition
-      toast({
-        title: "Photo recognition coming soon!",
-        description: "AI integration will be added next",
+      const { data, error } = await supabase.functions.invoke('identify-dish', {
+        body: { image: preview }
       });
-    } catch (error) {
+
+      if (error) throw error;
+
+      if (data?.dish) {
+        setDish(data.dish);
+        toast({
+          title: "Dish identified!",
+          description: `Detected: ${data.dish.name}`,
+        });
+      }
+    } catch (error: any) {
+      console.error("Error analyzing image:", error);
       toast({
         title: "Error",
-        description: "Failed to analyze image",
+        description: error.message || "Failed to analyze image",
         variant: "destructive",
       });
     } finally {
@@ -135,10 +158,20 @@ const PhotoRecognition = () => {
           </div>
         </Card>
 
-        {/* Results will be shown here */}
-        <div className="mt-8">
-          {/* Placeholder for dish identification results */}
-        </div>
+        {dish && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-bold mb-4">Identified Dish</h2>
+            <RecipeCard
+              recipe={dish}
+              onSave={() => {
+                toast({
+                  title: "Recipe saved!",
+                  description: "Find it in your Saved Recipes",
+                });
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

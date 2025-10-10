@@ -5,10 +5,23 @@ import { Card } from "@/components/ui/card";
 import { Loader2, Sparkles } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import RecipeCard from "@/components/RecipeCard";
+
+interface Recipe {
+  name: string;
+  description: string;
+  ingredients: string[];
+  steps: string[];
+  cookTime: string;
+  difficulty: string;
+  cuisine: string;
+}
 
 const IngredientsInput = () => {
   const [ingredients, setIngredients] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const { toast } = useToast();
 
   const handleGenerateRecipes = async () => {
@@ -22,16 +35,26 @@ const IngredientsInput = () => {
     }
 
     setLoading(true);
+    setRecipes([]);
     try {
-      // TODO: Call AI edge function
-      toast({
-        title: "Recipe generation coming soon!",
-        description: "AI integration will be added next",
+      const { data, error } = await supabase.functions.invoke('generate-recipes', {
+        body: { ingredients: ingredients.trim() }
       });
-    } catch (error) {
+
+      if (error) throw error;
+
+      if (data?.recipes) {
+        setRecipes(data.recipes);
+        toast({
+          title: "Recipes generated!",
+          description: `Found ${data.recipes.length} delicious recipes for you`,
+        });
+      }
+    } catch (error: any) {
+      console.error("Error generating recipes:", error);
       toast({
         title: "Error",
-        description: "Failed to generate recipes",
+        description: error.message || "Failed to generate recipes",
         variant: "destructive",
       });
     } finally {
@@ -90,10 +113,23 @@ const IngredientsInput = () => {
           </div>
         </Card>
 
-        {/* Recipe results will be shown here */}
-        <div className="mt-8">
-          {/* Placeholder for recipe cards */}
-        </div>
+        {recipes.length > 0 && (
+          <div className="mt-8 space-y-6">
+            <h2 className="text-2xl font-bold">Recipe Suggestions</h2>
+            {recipes.map((recipe, idx) => (
+              <RecipeCard
+                key={idx}
+                recipe={recipe}
+                onSave={() => {
+                  toast({
+                    title: "Recipe saved!",
+                    description: "Find it in your Saved Recipes",
+                  });
+                }}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,1 +1,7 @@
 project_id = "lqgdakwtcwkpzpqrlwzn"
+
+[functions.generate-recipes]
+verify_jwt = false
+
+[functions.identify-dish]
+verify_jwt = false
