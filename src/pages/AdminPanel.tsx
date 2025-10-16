@@ -1,27 +1,34 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Shield } from "lucide-react";
 import Navigation from "@/components/Navigation";
+import { useAuth } from "@/hooks/useAuth";
 
 const AdminPanel = () => {
-  // TODO: Implement authentication check
-  const isAdmin = false;
+  const navigate = useNavigate();
+  const { isAdmin, loading } = useAuth();
 
-  if (!isAdmin) {
+  useEffect(() => {
+    if (!loading && !isAdmin) {
+      // Redirect non-admin users to home
+      navigate("/");
+    }
+  }, [isAdmin, loading, navigate]);
+
+  if (loading) {
     return (
       <div className="min-h-screen pb-20 md:pt-20">
         <Navigation />
-        
-        <div className="container mx-auto px-4 py-8">
-          <Card className="p-12 text-center shadow-warm max-w-2xl mx-auto">
-            <Shield className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-xl font-semibold mb-2">Access Denied</h3>
-            <p className="text-muted-foreground">
-              You need admin privileges to access this page.
-            </p>
-          </Card>
+        <div className="container mx-auto px-4 py-8 text-center">
+          <p>Loading...</p>
         </div>
       </div>
     );
+  }
+
+  if (!isAdmin) {
+    return null; // Will redirect
   }
 
   return (
