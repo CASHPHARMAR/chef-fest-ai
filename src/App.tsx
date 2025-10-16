@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThreeBackground } from "./components/ThreeBackground";
 import Home from "./pages/Home";
 import IngredientsInput from "./pages/IngredientsInput";
 import PhotoRecognition from "./pages/PhotoRecognition";
@@ -18,6 +19,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <ThreeBackground />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
