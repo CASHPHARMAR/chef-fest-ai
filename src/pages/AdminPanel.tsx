@@ -1,20 +1,45 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
-import { Shield } from "lucide-react";
+import { Shield, BookOpen, Users } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 const AdminPanel = () => {
   const navigate = useNavigate();
   const { isAdmin, loading } = useAuth();
+  const [stats, setStats] = useState({
+    totalRecipes: 0,
+    totalUsers: 0,
+  });
 
   useEffect(() => {
     if (!loading && !isAdmin) {
-      // Redirect non-admin users to home
       navigate("/");
     }
   }, [isAdmin, loading, navigate]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchStats();
+    }
+  }, [isAdmin]);
+
+  const fetchStats = async () => {
+    const { count: recipesCount } = await supabase
+      .from("recipes")
+      .select("*", { count: "exact", head: true });
+
+    const { count: usersCount } = await supabase
+      .from("profiles")
+      .select("*", { count: "exact", head: true });
+
+    setStats({
+      totalRecipes: recipesCount || 0,
+      totalUsers: usersCount || 0,
+    });
+  };
 
   if (loading) {
     return (
@@ -43,20 +68,29 @@ const AdminPanel = () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
           <Card className="p-6 shadow-warm">
-            <h3 className="text-lg font-semibold mb-2">Total Recipes</h3>
-            <p className="text-3xl font-bold text-primary">0</p>
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <BookOpen className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Total Recipes</h3>
+                <p className="text-3xl font-bold text-primary">{stats.totalRecipes}</p>
+              </div>
+            </div>
           </Card>
           
           <Card className="p-6 shadow-warm">
-            <h3 className="text-lg font-semibold mb-2">Total Users</h3>
-            <p className="text-3xl font-bold text-primary">0</p>
-          </Card>
-          
-          <Card className="p-6 shadow-warm">
-            <h3 className="text-lg font-semibold mb-2">Reviews</h3>
-            <p className="text-3xl font-bold text-primary">0</p>
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <Users className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Total Users</h3>
+                <p className="text-3xl font-bold text-primary">{stats.totalUsers}</p>
+              </div>
+            </div>
           </Card>
         </div>
 

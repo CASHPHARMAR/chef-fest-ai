@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChefHat, Home, Camera, BookOpen, Shield, LogOut, LogIn } from "lucide-react";
+import { ChefHat, Home, Camera, BookOpen, Shield, LogOut, LogIn, User } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 const Navigation = () => {
@@ -48,9 +48,33 @@ const Navigation = () => {
                 className="gap-2"
               >
                 <BookOpen className="h-4 w-4" />
-                <span className="hidden md:inline">Recipes</span>
+                <span className="hidden md:inline">Generate</span>
               </Button>
             </Link>
+
+            <Link to="/recipes">
+              <Button
+                variant={isActive("/recipes") ? "default" : "ghost"}
+                size="sm"
+                className="gap-2"
+              >
+                <BookOpen className="h-4 w-4" />
+                <span className="hidden md:inline">Saved</span>
+              </Button>
+            </Link>
+
+            {user && (
+              <Link to="/profile">
+                <Button
+                  variant={isActive("/profile") ? "default" : "ghost"}
+                  size="sm"
+                  className="gap-2"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="hidden md:inline">Profile</span>
+                </Button>
+              </Link>
+            )}
 
             {isAdmin && (
               <Link to="/admin">

@@ -1,9 +1,14 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, ChefHat, Heart } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-interface Recipe {
+export interface Recipe {
   name: string;
   description: string;
   ingredients: string[];
@@ -19,6 +24,42 @@ interface RecipeCardProps {
 }
 
 const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!user) {
+      toast.error("Please sign in to save recipes");
+      navigate("/auth");
+      return;
+    }
+
+    setSaving(true);
+    const { error } = await supabase
+      .from("recipes")
+      .insert({
+        user_id: user.id,
+        name: recipe.name,
+        description: recipe.description,
+        ingredients: recipe.ingredients,
+        steps: recipe.steps,
+        cook_time: recipe.cookTime,
+        difficulty: recipe.difficulty,
+        cuisine: recipe.cuisine,
+      });
+
+    setSaving(false);
+
+    if (error) {
+      console.error("Error saving recipe:", error);
+      toast.error("Failed to save recipe");
+    } else {
+      toast.success("Recipe saved!");
+      if (onSave) onSave();
+    }
+  };
+
   return (
     <Card className="overflow-hidden shadow-warm animate-fade-in">
       <div className="p-6">
@@ -27,16 +68,15 @@ const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
             <h3 className="text-2xl font-bold mb-2">{recipe.name}</h3>
             <p className="text-muted-foreground mb-4">{recipe.description}</p>
           </div>
-          {onSave && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onSave}
-              className="hover:text-primary"
-            >
-              <Heart className="h-5 w-5" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleSave}
+            disabled={saving}
+            className="hover:text-primary"
+          >
+            <Heart className={`h-5 w-5 ${saving ? "fill-current" : ""}`} />
+          </Button>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-4">
