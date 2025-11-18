@@ -32,6 +32,56 @@ export type Database = {
         }
         Relationships: []
       }
+      recipes: {
+        Row: {
+          cook_time: string | null
+          created_at: string
+          cuisine: string | null
+          description: string | null
+          difficulty: string | null
+          id: string
+          ingredients: string[]
+          name: string
+          steps: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cook_time?: string | null
+          created_at?: string
+          cuisine?: string | null
+          description?: string | null
+          difficulty?: string | null
+          id?: string
+          ingredients: string[]
+          name: string
+          steps: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cook_time?: string | null
+          created_at?: string
+          cuisine?: string | null
+          description?: string | null
+          difficulty?: string | null
+          id?: string
+          ingredients?: string[]
+          name?: string
+          steps?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null

@@ -9,6 +9,7 @@ import Home from "./pages/Home";
 import IngredientsInput from "./pages/IngredientsInput";
 import PhotoRecognition from "./pages/PhotoRecognition";
 import SavedRecipes from "./pages/SavedRecipes";
+import UserProfile from "./pages/UserProfile";
 import AdminPanel from "./pages/AdminPanel";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/ingredients" element={<IngredientsInput />} />
             <Route path="/photo" element={<PhotoRecognition />} />
             <Route path="/recipes" element={<SavedRecipes />} />
+            <Route path="/profile" element={<UserProfile />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/auth" element={<Auth />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
