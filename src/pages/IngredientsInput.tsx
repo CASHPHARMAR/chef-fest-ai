@@ -2,11 +2,15 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, AlertCircle } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
+import AuthModal from "@/components/AuthModal";
+import { useAuth } from "@/hooks/useAuth";
+import { useGuestMode } from "@/hooks/useGuestMode";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Recipe {
   name: string;
@@ -23,12 +27,33 @@ const IngredientsInput = () => {
   const [loading, setLoading] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { 
+    guestRecipeCount, 
+    incrementGuestCount, 
+    canGenerateRecipe, 
+    hasReachedLimit,
+    showAuthModal,
+    setShowAuthModal,
+    maxRecipes 
+  } = useGuestMode();
 
   const handleGenerateRecipes = async () => {
     if (!ingredients.trim()) {
       toast({
         title: "Missing ingredients",
         description: "Please enter some ingredients first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check guest limit
+    if (!user && hasReachedLimit()) {
+      setShowAuthModal(true);
+      toast({
+        title: "Preview limit reached",
+        description: "Sign up to generate unlimited recipes!",
         variant: "destructive",
       });
       return;
@@ -45,6 +70,12 @@ const IngredientsInput = () => {
 
       if (data?.recipes) {
         setRecipes(data.recipes);
+        
+        // Increment guest count if not logged in
+        if (!user) {
+          incrementGuestCount();
+        }
+        
         toast({
           title: "Recipes generated!",
           description: `Found ${data.recipes.length} delicious recipes for you`,
@@ -73,6 +104,15 @@ const IngredientsInput = () => {
             List your ingredients and discover amazing recipes you can make
           </p>
         </div>
+
+        {!user && (
+          <Alert className="mb-6 border-primary/20 bg-primary/5 animate-in fade-in-0 slide-in-from-top-4">
+            <AlertCircle className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              <strong>Guest Preview Mode:</strong> You can generate <strong>{maxRecipes - guestRecipeCount}</strong> more recipe{maxRecipes - guestRecipeCount !== 1 ? 's' : ''} before signing up.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Card className="p-6 shadow-warm">
           <div className="space-y-4">
@@ -131,6 +171,12 @@ const IngredientsInput = () => {
           </div>
         )}
       </div>
+      
+      <AuthModal
+        open={showAuthModal}
+        onOpenChange={setShowAuthModal}
+        trigger={guestRecipeCount === 1 ? "first_recipe" : "limit_reached"}
+      />
     </div>
   );
 };

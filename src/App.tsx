@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThreeBackground } from "./components/ThreeBackground";
 import { AuthProvider } from "./hooks/useAuth";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Home from "./pages/Home";
 import IngredientsInput from "./pages/IngredientsInput";
 import PhotoRecognition from "./pages/PhotoRecognition";
@@ -28,9 +29,21 @@ const App = () => (
             <Route path="/" element={<Home />} />
             <Route path="/ingredients" element={<IngredientsInput />} />
             <Route path="/photo" element={<PhotoRecognition />} />
-            <Route path="/recipes" element={<SavedRecipes />} />
-            <Route path="/profile" element={<UserProfile />} />
-            <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/recipes" element={
+              <ProtectedRoute>
+                <SavedRecipes />
+              </ProtectedRoute>
+            } />
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                <UserProfile />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin" element={
+              <ProtectedRoute>
+                <AdminPanel />
+              </ProtectedRoute>
+            } />
             <Route path="/auth" element={<Auth />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

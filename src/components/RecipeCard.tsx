@@ -7,6 +7,7 @@ import { Clock, ChefHat, Heart } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import AuthModal from "./AuthModal";
 
 export interface Recipe {
   name: string;
@@ -27,11 +28,11 @@ const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const handleSave = async () => {
     if (!user) {
-      toast.error("Please sign in to save recipes");
-      navigate("/auth");
+      setShowAuthModal(true);
       return;
     }
 
@@ -115,6 +116,12 @@ const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
           </div>
         </div>
       </div>
+      
+      <AuthModal
+        open={showAuthModal}
+        onOpenChange={setShowAuthModal}
+        trigger="save_recipe"
+      />
     </Card>
   );
 };
