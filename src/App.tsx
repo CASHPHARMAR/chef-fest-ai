@@ -29,11 +29,7 @@ const App = () => (
             <Route path="/" element={<Home />} />
             <Route path="/ingredients" element={<IngredientsInput />} />
             <Route path="/photo" element={<PhotoRecognition />} />
-            <Route path="/recipes" element={
-              <ProtectedRoute>
-                <SavedRecipes />
-              </ProtectedRoute>
-            } />
+            <Route path="/recipes" element={<SavedRecipes />} />
             <Route path="/profile" element={
               <ProtectedRoute>
                 <UserProfile />
