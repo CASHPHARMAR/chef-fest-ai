@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChefHat, AlertCircle } from "lucide-react";
 import { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
+import Navigation from "@/components/Navigation";
 const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
 
@@ -88,8 +88,10 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-md p-8 shadow-warm animate-in fade-in-0 zoom-in-95 duration-300">
+    <>
+      <Navigation />
+      <div className="min-h-screen flex items-center justify-center px-4 py-12 pt-20 pb-24 md:pb-12">
+        <Card className="w-full max-w-md p-8 shadow-warm animate-in fade-in-0 zoom-in-95 duration-300">
         <div className="text-center mb-8">
           <ChefHat className="h-12 w-12 mx-auto mb-4 text-primary" />
           <h1 className="text-3xl font-bold">Chef Fest</h1>
@@ -189,7 +191,8 @@ const Auth = () => {
           </TabsContent>
         </Tabs>
       </Card>
-    </div>
+      </div>
+    </>
   );
 };
 
