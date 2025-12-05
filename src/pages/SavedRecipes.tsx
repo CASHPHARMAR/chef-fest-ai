@@ -2,23 +2,19 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Trash2, Clock, ChefHat } from "lucide-react";
+import { BookOpen, Trash2, Clock, ChefHat, Heart, Sparkles } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import AuthModal from "@/components/AuthModal";
 
 const SavedRecipes = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
   const [savedRecipes, setSavedRecipes] = useState<any[]>([]);
   const [fetchingRecipes, setFetchingRecipes] = useState(true);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate("/auth");
-    }
-  }, [user, loading, navigate]);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -60,7 +56,73 @@ const SavedRecipes = () => {
     }
   };
 
-  if (loading || fetchingRecipes) {
+  if (loading) {
+    return (
+      <div className="min-h-screen pb-20 md:pt-20">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8 text-center">
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen pb-20 md:pt-20">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <Card className="p-12 text-center shadow-warm max-w-2xl mx-auto animate-fade-in">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+              <Heart className="h-10 w-10 text-primary" />
+            </div>
+            <h2 className="text-3xl font-bold mb-4">Your Personal Cookbook Awaits!</h2>
+            <p className="text-muted-foreground text-lg mb-6">
+              Sign up to save your favorite recipes and access them anytime, anywhere.
+            </p>
+            <div className="space-y-3 mb-8 text-left max-w-sm mx-auto">
+              <div className="flex items-center gap-3 text-sm">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/10">
+                  <BookOpen className="h-4 w-4 text-accent" />
+                </div>
+                <span className="text-muted-foreground">Save unlimited recipes to your collection</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/10">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                </div>
+                <span className="text-muted-foreground">Access your recipes from any device</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/10">
+                  <ChefHat className="h-4 w-4 text-accent" />
+                </div>
+                <span className="text-muted-foreground">Build your personal cooking library</span>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button 
+                size="lg" 
+                onClick={() => navigate("/auth?mode=signup")}
+                className="shadow-warm hover:shadow-glow transition-all duration-300"
+              >
+                Create Free Account
+              </Button>
+              <Button 
+                size="lg" 
+                variant="outline"
+                onClick={() => navigate("/auth?mode=login")}
+              >
+                Already have an account? Login
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchingRecipes) {
     return (
       <div className="min-h-screen pb-20 md:pt-20">
         <Navigation />
@@ -69,10 +131,6 @@ const SavedRecipes = () => {
         </div>
       </div>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   return (
