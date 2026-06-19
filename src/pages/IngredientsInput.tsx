@@ -22,10 +22,22 @@ interface Recipe {
   cuisine: string;
 }
 
+const STORAGE_KEY = "chef-fest:ingredients-search";
+
 const IngredientsInput = () => {
-  const [ingredients, setIngredients] = useState("");
+  const [ingredients, setIngredients] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? (JSON.parse(raw).ingredients ?? "") : "";
+    } catch { return ""; }
+  });
   const [loading, setLoading] = useState(false);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? (JSON.parse(raw).recipes ?? []) : [];
+    } catch { return []; }
+  });
   const { toast } = useToast();
   const { user } = useAuth();
   const { 
@@ -37,6 +49,12 @@ const IngredientsInput = () => {
     setShowAuthModal,
     maxRecipes 
   } = useGuestMode();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ingredients, recipes }));
+    } catch {}
+  }, [ingredients, recipes]);
 
   const handleGenerateRecipes = async () => {
     if (!ingredients.trim()) {
