@@ -58,7 +58,7 @@ const SavedRecipes = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen pb-20 md:pt-20">
+      <div className="min-h-screen pt-24 pb-8">
         <Navigation />
         <div className="container mx-auto px-4 py-8 text-center">
           <p>Loading...</p>
@@ -69,7 +69,7 @@ const SavedRecipes = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen pb-20 md:pt-20">
+      <div className="min-h-screen pt-24 pb-8">
         <Navigation />
         <div className="container mx-auto px-4 py-8">
           <Card className="p-12 text-center shadow-warm max-w-2xl mx-auto animate-fade-in">
@@ -124,7 +124,7 @@ const SavedRecipes = () => {
 
   if (fetchingRecipes) {
     return (
-      <div className="min-h-screen pb-20 md:pt-20">
+      <div className="min-h-screen pt-24 pb-8">
         <Navigation />
         <div className="container mx-auto px-4 py-8 text-center">
           <p>Loading recipes...</p>
@@ -134,7 +134,7 @@ const SavedRecipes = () => {
   }
 
   return (
-    <div className="min-h-screen pb-20 md:pt-20">
+    <div className="min-h-screen pt-24 pb-8">
       <Navigation />
       
       <div className="container mx-auto px-4 py-8">

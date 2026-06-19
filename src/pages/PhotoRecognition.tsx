@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Camera, Upload, Loader2, AlertCircle } from "lucide-react";
@@ -21,10 +21,22 @@ interface Dish {
   cookTime: string;
 }
 
+const STORAGE_KEY = "chef-fest:photo-search";
+
 const PhotoRecognition = () => {
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? (JSON.parse(raw).preview ?? null) : null;
+    } catch { return null; }
+  });
   const [loading, setLoading] = useState(false);
-  const [dish, setDish] = useState<Dish | null>(null);
+  const [dish, setDish] = useState<Dish | null>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? (JSON.parse(raw).dish ?? null) : null;
+    } catch { return null; }
+  });
   const { toast } = useToast();
   const { user } = useAuth();
   const { 
@@ -36,6 +48,12 @@ const PhotoRecognition = () => {
     setShowAuthModal,
     maxRecipes 
   } = useGuestMode();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ preview, dish }));
+    } catch {}
+  }, [preview, dish]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -104,7 +122,7 @@ const PhotoRecognition = () => {
   };
 
   return (
-    <div className="min-h-screen pb-20 md:pt-20">
+    <div className="min-h-screen pt-24 pb-8">
       <Navigation />
       
       <div className="container mx-auto px-4 py-8 max-w-3xl">

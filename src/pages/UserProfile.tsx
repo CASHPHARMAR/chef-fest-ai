@@ -61,7 +61,7 @@ const UserProfile = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen pb-20 md:pt-20">
+      <div className="min-h-screen pt-24 pb-8">
         <Navigation />
         <div className="container mx-auto px-4 py-8 text-center">
           <p>Loading...</p>
@@ -75,7 +75,7 @@ const UserProfile = () => {
   }
 
   return (
-    <div className="min-h-screen pb-20 md:pt-20">
+    <div className="min-h-screen pt-24 pb-8">
       <Navigation />
       
       <div className="container mx-auto px-4 py-8">
