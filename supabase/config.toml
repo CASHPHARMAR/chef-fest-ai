@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.identify-dish]
 verify_jwt = false
+
+[functions.cirlo-recipe]
+verify_jwt = false
