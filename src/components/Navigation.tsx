@@ -1,11 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChefHat, Home, Camera, BookOpen, Shield, LogOut, LogIn, User } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+import { ChefHat, Home, Camera, BookOpen } from "lucide-react";
 
 const Navigation = () => {
   const location = useLocation();
-  const { user, isAdmin, signOut } = useAuth();
   
   const isActive = (path: string) => location.pathname === path;
 
@@ -63,54 +61,6 @@ const Navigation = () => {
               </Button>
             </Link>
 
-            {user && (
-              <Link to="/profile">
-                <Button
-                  variant={isActive("/profile") ? "default" : "ghost"}
-                  size="sm"
-                  className="gap-2"
-                >
-                  <User className="h-4 w-4" />
-                  <span className="hidden md:inline">Profile</span>
-                </Button>
-              </Link>
-            )}
-
-            {isAdmin && (
-              <Link to="/admin">
-                <Button
-                  variant={isActive("/admin") ? "default" : "ghost"}
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Shield className="h-4 w-4" />
-                  <span className="hidden md:inline">Admin</span>
-                </Button>
-              </Link>
-            )}
-
-            {user ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={signOut}
-                className="gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden md:inline">Sign Out</span>
-              </Button>
-            ) : (
-              <Link to="/auth">
-                <Button
-                  variant={isActive("/auth") ? "default" : "ghost"}
-                  size="sm"
-                  className="gap-2"
-                >
-                  <LogIn className="h-4 w-4" />
-                  <span className="hidden md:inline">Sign In</span>
-                </Button>
-              </Link>
-            )}
           </div>
         </div>
       </div>
