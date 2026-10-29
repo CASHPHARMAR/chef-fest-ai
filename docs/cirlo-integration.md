@@ -5,7 +5,7 @@ Give this document to the Cirlo team. **Never put the token in the document itse
 ## Endpoint
 
 ```
-POST https://lqgdakwtcwkpzpqrlwzn.functions.supabase.co/cirlo-recipe
+POST https://axwawznpqznnladmtvnp.functions.supabase.co/cirlo-recipe
 Content-Type: application/json
 Authorization: Bearer <CIRLO_API_TOKEN>
 ```
@@ -67,14 +67,14 @@ All errors return `{ "error": "message" }`.
 ## Example
 
 ```bash
-curl -X POST https://lqgdakwtcwkpzpqrlwzn.functions.supabase.co/cirlo-recipe \
+curl -X POST https://axwawznpqznnladmtvnp.functions.supabase.co/cirlo-recipe \
   -H "Authorization: Bearer $CIRLO_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"ingredients":"rice, eggs, spring onion","count":2}'
 ```
 
 ```ts
-const res = await fetch("https://lqgdakwtcwkpzpqrlwzn.functions.supabase.co/cirlo-recipe", {
+const res = await fetch("https://axwawznpqznnladmtvnp.functions.supabase.co/cirlo-recipe", {
   method: "POST",
   headers: {
     Authorization: `Bearer ${process.env.CHEF_FEST_TOKEN}`, // server-side only

@@ -2,12 +2,18 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Loader2, Sparkles, AlertCircle } from "lucide-react";
+import { Loader2, Sparkles, AlertCircle, HelpCircle, CloudOff } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  checkFoodInput,
+  NOT_FOOD_MESSAGE,
+  UNCERTAIN_MESSAGE,
+  UNAVAILABLE_MESSAGE,
+} from "../../supabase/functions/_shared/foodValidation";
 
 interface Recipe {
   name: string;
@@ -19,7 +25,33 @@ interface Recipe {
   cuisine: string;
 }
 
+type NoticeKind = "invalid" | "uncertain" | "unavailable";
+
 const STORAGE_KEY = "chef-fest:ingredients-search";
+
+const noticeIcon = (kind: NoticeKind) => {
+  if (kind === "uncertain") return <HelpCircle className="h-4 w-4" />;
+  if (kind === "unavailable") return <CloudOff className="h-4 w-4" />;
+  return <AlertCircle className="h-4 w-4" />;
+};
+
+/**
+ * Reads the friendly message out of an edge-function error response without
+ * ever surfacing a raw provider error, stack trace or status code.
+ */
+const readErrorNotice = async (error: unknown): Promise<NoticeKind> => {
+  const context = (error as { context?: Response } | null)?.context;
+  if (context && typeof context.json === "function") {
+    try {
+      const payload = await context.json() as { status?: string };
+      if (payload?.status === "uncertain") return "uncertain";
+      if (payload?.status === "invalid") return "invalid";
+    } catch {
+      // Body was empty or not JSON: fall through to the safe default.
+    }
+  }
+  return "unavailable";
+};
 
 const IngredientsInput = () => {
   const [ingredients, setIngredients] = useState(() => {
@@ -30,6 +62,7 @@ const IngredientsInput = () => {
   });
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeKind, setNoticeKind] = useState<NoticeKind>("invalid");
   const [recipes, setRecipes] = useState<Recipe[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -47,11 +80,24 @@ const IngredientsInput = () => {
     }
   }, [ingredients, recipes]);
 
+  const showNotice = (kind: NoticeKind, message: string) => {
+    setNoticeKind(kind);
+    setNotice(message);
+  };
+
   const handleGenerateRecipes = async () => {
-    if (!ingredients.trim()) {
+    // The button is disabled while loading, but a fast double submit could
+    // still slip through before React re-renders.
+    if (loading) return;
+
+    // Layer A: never spend an AI request on obviously invalid input.
+    const check = checkFoodInput(ingredients);
+    if (check.ok === false) {
+      setRecipes([]);
+      showNotice("invalid", check.message);
       toast({
-        title: "Missing ingredients",
-        description: "Please enter some ingredients first",
+        title: check.problem === "empty" ? "Missing ingredients" : "Invalid input",
+        description: check.message,
         variant: "destructive",
       });
       return;
@@ -62,34 +108,60 @@ const IngredientsInput = () => {
     setNotice(null);
     try {
       const { data, error } = await supabase.functions.invoke('generate-recipes', {
-        body: { ingredients: ingredients.trim() }
+        body: { ingredients: check.value }
       });
 
-      if (error) throw error;
-
-      // The AI declines to invent recipes for input it cannot recognise as food.
-      if (data?.status === "not_food") {
-        const message = typeof data.message === "string" && data.message.trim()
-          ? data.message
-          : "We couldn't find any recipes for that. Try listing real ingredients.";
-        setNotice(message);
-        toast({ title: "No recipes found", description: message });
+      if (error) {
+        const kind = await readErrorNotice(error);
+        const message = kind === "uncertain"
+          ? UNCERTAIN_MESSAGE
+          : kind === "invalid"
+            ? NOT_FOOD_MESSAGE
+            : UNAVAILABLE_MESSAGE;
+        showNotice(kind, message);
+        toast({ title: "No recipes yet", description: message });
         return;
       }
 
-      if (Array.isArray(data?.recipes) && data.recipes.length > 0) {
-        setRecipes(data.recipes);
+      // Server-side verdicts. "not_food" is the older shape and stays supported
+      // so a partially deployed backend cannot show a broken page.
+      if (data?.status === "invalid" || data?.status === "not_food") {
+        showNotice("invalid", NOT_FOOD_MESSAGE);
+        toast({ title: "No recipes found", description: NOT_FOOD_MESSAGE });
+        return;
+      }
 
+      if (data?.status === "uncertain") {
+        showNotice("uncertain", UNCERTAIN_MESSAGE);
+        toast({ title: "Could you clarify?", description: UNCERTAIN_MESSAGE });
+        return;
+      }
+
+      if (data?.status === "unavailable") {
+        showNotice("unavailable", UNAVAILABLE_MESSAGE);
+        toast({ title: "Please try again", description: UNAVAILABLE_MESSAGE });
+        return;
+      }
+
+      if (data?.status === "ok" && Array.isArray(data.recipes) && data.recipes.length > 0) {
+        setRecipes(data.recipes);
         toast({
           title: "Recipes generated!",
           description: `Found ${data.recipes.length} delicious recipes for you`,
         });
+        return;
       }
+
+      // A response we do not recognise is treated as a temporary failure rather
+      // than rendering half-valid data.
+      showNotice("unavailable", UNAVAILABLE_MESSAGE);
+      toast({ title: "Please try again", description: UNAVAILABLE_MESSAGE });
     } catch (error) {
       console.error("Error generating recipes:", error);
+      showNotice("unavailable", UNAVAILABLE_MESSAGE);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to generate recipes",
+        title: "Please try again",
+        description: UNAVAILABLE_MESSAGE,
         variant: "destructive",
       });
     } finally {
@@ -152,8 +224,8 @@ const IngredientsInput = () => {
         </Card>
 
         {notice && (
-          <Alert className="mt-6">
-            <AlertCircle className="h-4 w-4" />
+          <Alert className="mt-6" aria-live="polite">
+            {noticeIcon(noticeKind)}
             <AlertDescription>{notice}</AlertDescription>
           </Alert>
         )}
