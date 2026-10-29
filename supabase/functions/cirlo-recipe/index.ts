@@ -117,7 +117,8 @@ Never invent ingredients to force a recipe. Always respond with valid JSON.`,
           },
         },
       ],
-      tool_choice: { type: "function", function: { name: "generate_recipes" } },
+      // kilo-auto/free rejects named/required tool choice; prompt insists on the tool.
+      tool_choice: "auto",
     }),
   });
 

@@ -131,7 +131,8 @@ If the text above is real food, generate 3 diverse recipe suggestions. For each 
           },
         },
       ],
-      tool_choice: { type: "function", function: { name: "generate_recipes" } },
+      // kilo-auto/free rejects named/required tool choice; prompt insists on the tool.
+      tool_choice: "auto",
     }),
   });
 
