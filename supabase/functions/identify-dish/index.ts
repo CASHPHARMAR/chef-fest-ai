@@ -17,6 +17,9 @@ const KILO_API_KEY = Deno.env.get("KILO_API_KEY");
 const MAX_IMAGE_CHARS = 8_000_000;
 const REQUEST_TIMEOUT_MS = 60_000;
 
+const NOT_FOOD_MESSAGE =
+  "We couldn't spot any food in that photo. Try a clearer picture of a dish or ingredients.";
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -29,6 +32,18 @@ const aiHeaders = () => {
   return headers;
 };
 
+// Free models often emit markdown noise (">", ":", "-") or a truncated string in
+// the message field, so anything that is not a real sentence falls back to our
+// own copy. The user must never see ":" as an explanation.
+const cleanMessage = (raw: unknown, fallback: string) => {
+  if (typeof raw !== "string") return fallback;
+  const text = raw
+    .replace(/^[\s>:#*_\-–—]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length >= 25 ? text : fallback;
+};
+
 class UpstreamError extends Error {
   status: number;
   constructor(message: string, status = 502) {
@@ -37,9 +52,20 @@ class UpstreamError extends Error {
   }
 }
 
+// Every field is required so strict providers accept the schema. When status is
+// not_food the dish fields are simply ignored (the model returns them empty).
 const dishSchema = {
   type: "object",
   properties: {
+    status: {
+      type: "string",
+      enum: ["ok", "not_food"],
+      description: "Whether the photo contains food that can be identified.",
+    },
+    message: {
+      type: "string",
+      description: "Friendly message for the user. Only meaningful when status is not_food; otherwise empty.",
+    },
     name: { type: "string" },
     description: { type: "string" },
     ingredients: { type: "array", items: { type: "string" } },
@@ -48,9 +74,18 @@ const dishSchema = {
     difficulty: { type: "string", enum: ["Easy", "Medium", "Hard"] },
     cookTime: { type: "string" },
   },
-  required: ["name", "description", "ingredients", "steps", "cuisine", "difficulty", "cookTime"],
+  required: ["status", "message", "name", "description", "ingredients", "steps", "cuisine", "difficulty", "cookTime"],
   additionalProperties: false,
 };
+
+const systemPrompt = `You are a professional chef AI that identifies dishes from photos.
+
+First decide whether the image actually shows food or drink.
+
+- If it shows a dish, ingredient or drink, set status to "ok", leave message empty, and fill in the dish fields.
+- If it does not (a person, a screenshot, a document, a landscape, an animal, a blank photo), set status to "not_food", write a short, warm message saying you could not spot any food, and leave the dish fields empty.
+
+Never invent a dish for a photo that contains no food. Always respond with valid JSON.`;
 
 async function identifyWithModel(model: string, image: string) {
   const response = await fetch(AI_ENDPOINT, {
@@ -60,12 +95,13 @@ async function identifyWithModel(model: string, image: string) {
     body: JSON.stringify({
       model,
       messages: [
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Analyze this food image and identify the dish. Provide the dish name, description, likely ingredients, preparation steps, cuisine type, and difficulty level.",
+              text: "Identify the dish in this photo and give the name, description, likely ingredients, preparation steps, cuisine type, difficulty and cook time.",
             },
             {
               type: "image_url",
@@ -79,7 +115,7 @@ async function identifyWithModel(model: string, image: string) {
           type: "function",
           function: {
             name: "identify_dish",
-            description: "Identify a dish from a photo",
+            description: "Return either an identified dish, or a friendly explanation that no food was found",
             parameters: dishSchema,
           },
         },
@@ -103,12 +139,18 @@ async function identifyWithModel(model: string, image: string) {
     throw new UpstreamError(`Model ${model} could not identify the dish`);
   }
 
-  const dish = JSON.parse(toolCall.function.arguments);
-  if (!dish || typeof dish.name !== "string" || !dish.name.trim()) {
+  const parsed = JSON.parse(toolCall.function.arguments);
+
+  if (parsed?.status === "not_food") {
+    return { status: "not_food" as const, message: cleanMessage(parsed.message, NOT_FOOD_MESSAGE) };
+  }
+
+  if (typeof parsed?.name !== "string" || !parsed.name.trim() || !Array.isArray(parsed.ingredients)) {
     throw new UpstreamError(`Model ${model} returned an incomplete dish`);
   }
 
-  return dish;
+  const { status: _status, message: _message, ...dish } = parsed;
+  return { status: "ok" as const, dish };
 }
 
 serve(async (req) => {
@@ -139,8 +181,8 @@ serve(async (req) => {
     let lastError: UpstreamError | null = null;
     for (const model of models) {
       try {
-        const dish = await identifyWithModel(model, image);
-        return json({ dish });
+        const result = await identifyWithModel(model, image);
+        return json(result);
       } catch (error) {
         lastError = error instanceof UpstreamError
           ? error

@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, AlertCircle } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Recipe {
   name: string;
@@ -28,6 +29,7 @@ const IngredientsInput = () => {
     } catch { return ""; }
   });
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [recipes, setRecipes] = useState<Recipe[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -57,6 +59,7 @@ const IngredientsInput = () => {
 
     setLoading(true);
     setRecipes([]);
+    setNotice(null);
     try {
       const { data, error } = await supabase.functions.invoke('generate-recipes', {
         body: { ingredients: ingredients.trim() }
@@ -64,9 +67,19 @@ const IngredientsInput = () => {
 
       if (error) throw error;
 
-      if (data?.recipes) {
+      // The AI declines to invent recipes for input it cannot recognise as food.
+      if (data?.status === "not_food") {
+        const message = typeof data.message === "string" && data.message.trim()
+          ? data.message
+          : "We couldn't find any recipes for that. Try listing real ingredients.";
+        setNotice(message);
+        toast({ title: "No recipes found", description: message });
+        return;
+      }
+
+      if (Array.isArray(data?.recipes) && data.recipes.length > 0) {
         setRecipes(data.recipes);
-        
+
         toast({
           title: "Recipes generated!",
           description: `Found ${data.recipes.length} delicious recipes for you`,
@@ -105,7 +118,10 @@ const IngredientsInput = () => {
               <Textarea
                 placeholder="E.g., chicken breast, garlic, tomatoes, basil..."
                 value={ingredients}
-                onChange={(e) => setIngredients(e.target.value)}
+                onChange={(e) => {
+                  setIngredients(e.target.value);
+                  setNotice(null);
+                }}
                 rows={6}
                 className="resize-none"
               />
@@ -134,6 +150,13 @@ const IngredientsInput = () => {
             </Button>
           </div>
         </Card>
+
+        {notice && (
+          <Alert className="mt-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{notice}</AlertDescription>
+          </Alert>
+        )}
 
         {recipes.length > 0 && (
           <div className="mt-8 space-y-6">

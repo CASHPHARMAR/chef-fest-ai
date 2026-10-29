@@ -58,6 +58,7 @@ The token is dedicated to Cirlo only. It is not a Chef Fest user token and carri
 | 400 | invalid JSON, missing both `ingredients` and `request`, or field over 2000 chars |
 | 401 | missing or invalid token |
 | 405 | method other than `POST` |
+| 422 | request was not about real food — `error` holds a friendly message |
 | 429 | rate limit — retry with backoff |
 | 502 / 500 | upstream AI or server error |
 

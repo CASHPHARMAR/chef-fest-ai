@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Camera, Upload, Loader2 } from "lucide-react";
+import { Camera, Upload, Loader2, AlertCircle } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Dish {
   name: string;
@@ -65,6 +66,7 @@ const compressImage = (file: File): Promise<string> =>
 const PhotoRecognition = () => {
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [dish, setDish] = useState<Dish | null>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -104,6 +106,7 @@ const PhotoRecognition = () => {
 
     try {
       setPreview(await compressImage(file));
+      setNotice(null);
     } catch (error) {
       toast({
         title: "Could not load image",
@@ -128,6 +131,7 @@ const PhotoRecognition = () => {
 
     setLoading(true);
     setDish(null);
+    setNotice(null);
     try {
       const { data, error } = await supabase.functions.invoke('identify-dish', {
         body: { image: preview }
@@ -135,9 +139,19 @@ const PhotoRecognition = () => {
 
       if (error) throw error;
 
+      // The AI declines to invent a dish when the photo contains no food.
+      if (data?.status === "not_food") {
+        const message = typeof data.message === "string" && data.message.trim()
+          ? data.message
+          : "We couldn't spot any food in that photo. Try a clearer picture of a dish.";
+        setNotice(message);
+        toast({ title: "No food found", description: message });
+        return;
+      }
+
       if (data?.dish) {
         setDish(data.dish);
-        
+
         toast({
           title: "Dish identified!",
           description: `Detected: ${data.dish.name}`,
@@ -179,7 +193,10 @@ const PhotoRecognition = () => {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => setPreview(null)}
+                  onClick={() => {
+                    setPreview(null);
+                    setNotice(null);
+                  }}
                   className="absolute top-2 right-2"
                 >
                   Remove
@@ -240,6 +257,13 @@ const PhotoRecognition = () => {
             </Button>
           </div>
         </Card>
+
+        {notice && (
+          <Alert className="mt-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{notice}</AlertDescription>
+          </Alert>
+        )}
 
         {dish && (
           <div className="mt-8 animate-in fade-in-0 slide-in-from-bottom-4">

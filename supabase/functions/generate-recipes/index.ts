@@ -14,7 +14,12 @@ const FALLBACK_MODEL = Deno.env.get("KILO_FALLBACK_MODEL") ?? "nvidia/nemotron-3
 const KILO_API_KEY = Deno.env.get("KILO_API_KEY");
 
 const MAX_INGREDIENTS = 1000;
+const MAX_RECIPES = 3;
 const REQUEST_TIMEOUT_MS = 60_000;
+
+// Shown when the model cannot map the input to real food and declines to invent a recipe.
+const NOT_FOOD_MESSAGE =
+  "We couldn't find any recipes for that one. Try listing real ingredients, like \"chicken, rice, garlic\".";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -28,6 +33,20 @@ const aiHeaders = () => {
   return headers;
 };
 
+/**
+ * Free models often emit markdown noise (">", ":", "-") or a truncated string in
+ * the message field, so anything that is not a real sentence falls back to our
+ * own copy. The user must never see ":" as an explanation.
+ */
+const cleanMessage = (raw: unknown, fallback: string) => {
+  if (typeof raw !== "string") return fallback;
+  const text = raw
+    .replace(/^[\s>:#*_\-–—]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length >= 25 ? text : fallback;
+};
+
 class UpstreamError extends Error {
   status: number;
   constructor(message: string, status = 502) {
@@ -39,9 +58,17 @@ class UpstreamError extends Error {
 const recipeSchema = {
   type: "object",
   properties: {
+    status: {
+      type: "string",
+      enum: ["ok", "not_food"],
+      description: "Whether the input could be turned into real recipes.",
+    },
+    message: {
+      type: "string",
+      description: "Friendly message for the user. Only meaningful when status is not_food; otherwise empty.",
+    },
     recipes: {
       type: "array",
-      minItems: 1,
       items: {
         type: "object",
         properties: {
@@ -58,23 +85,32 @@ const recipeSchema = {
       },
     },
   },
-  required: ["recipes"],
+  required: ["status", "message", "recipes"],
   additionalProperties: false,
 };
 
-async function generateWithModel(model: string, ingredients: string) {
-  const prompt = `You are a professional chef AI. Given these ingredients: ${ingredients}
+const systemPrompt = `You are a professional chef AI assistant that generates creative, practical recipes.
 
-Generate 3 diverse recipe suggestions. For each recipe, provide:
+Before writing anything, decide whether the user's text describes real food, drink or cooking ingredients.
+
+- If it does, set status to "ok", leave message empty, and fill recipes with real dishes.
+- If it does not, set status to "not_food", leave recipes as an empty array, and write a short, warm message explaining you could not find recipes for what they typed, then invite them to list real ingredients.
+
+Treat these as not_food: random characters ("asdfghjkl", "qwerty"), unrelated words ("my homework", "battery acid"), inedible or dangerous items ("plastic", "bleach", "glass"), single letters, and empty or meaningless input.
+
+Never invent ingredients to force a recipe. Guessing is worse than saying you do not know. Always respond with valid JSON.`;
+
+async function generateWithModel(model: string, ingredients: string) {
+  const prompt = `Ingredients from the user: ${ingredients}
+
+If the text above is real food, generate 3 diverse recipe suggestions. For each recipe provide:
 1. Recipe name
 2. Full ingredients list (including what they provided plus common pantry items)
 3. Step-by-step preparation instructions
 4. Estimated cook time
 5. Difficulty level (Easy/Medium/Hard)
 6. Cuisine type
-7. A brief description
-
-Format your response as a JSON array of recipes.`;
+7. A brief description`;
 
   const response = await fetch(AI_ENDPOINT, {
     method: "POST",
@@ -83,7 +119,7 @@ Format your response as a JSON array of recipes.`;
     body: JSON.stringify({
       model,
       messages: [
-        { role: "system", content: "You are a professional chef AI assistant that generates creative, practical recipes. Always respond with valid JSON." },
+        { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
       tools: [
@@ -91,7 +127,7 @@ Format your response as a JSON array of recipes.`;
           type: "function",
           function: {
             name: "generate_recipes",
-            description: "Generate recipe suggestions based on available ingredients",
+            description: "Return either recipes, or a friendly explanation that the input was not food",
             parameters: recipeSchema,
           },
         },
@@ -116,12 +152,19 @@ Format your response as a JSON array of recipes.`;
   }
 
   const parsed = JSON.parse(toolCall.function.arguments);
+
+  // The model decided the input was not food: show a friendly message.
+  if (parsed?.status === "not_food") {
+    return { status: "not_food" as const, message: cleanMessage(parsed.message, NOT_FOOD_MESSAGE) };
+  }
+
   const recipes = Array.isArray(parsed?.recipes) ? parsed.recipes : [];
   if (recipes.length === 0) {
     throw new UpstreamError(`Model ${model} returned an empty recipe list`);
   }
 
-  return recipes;
+  // Models occasionally ignore the "3 recipes" instruction; keep the page sane.
+  return { status: "ok" as const, recipes: recipes.slice(0, MAX_RECIPES) };
 }
 
 serve(async (req) => {
@@ -152,8 +195,8 @@ serve(async (req) => {
     let lastError: UpstreamError | null = null;
     for (const model of models) {
       try {
-        const recipes = await generateWithModel(model, ingredients);
-        return json({ recipes });
+        const result = await generateWithModel(model, ingredients);
+        return json(result);
       } catch (error) {
         lastError = error instanceof UpstreamError
           ? error

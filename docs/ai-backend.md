@@ -41,6 +41,21 @@ anon key.
 supabase functions deploy generate-recipes identify-dish cirlo-recipe
 ```
 
+## Not-food responses
+
+The models are told to decide first whether the input is real food. Gibberish,
+unrelated text, inedible or dangerous items and non-food photos are refused
+instead of being turned into invented recipes.
+
+- `generate-recipes` returns `200` with `{ "status": "not_food", "message": "…" }`
+- `identify-dish` returns `200` with `{ "status": "not_food", "message": "…" }`
+- successful calls return `{ "status": "ok", "recipes": [...] }` or `{ "status": "ok", "dish": {...} }`
+- `cirlo-recipe` returns `422` with a friendly `error` message
+
+Free models frequently emit markdown noise (`>`, `:`, `-`) or truncated text in
+the `message` field, so each function sanitises it and substitutes its own copy
+when the result is not a full sentence.
+
 ## Before going public
 
 The free tier logs prompts with the upstream provider and offers no uptime
