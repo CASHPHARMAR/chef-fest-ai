@@ -11,13 +11,13 @@ falls back to a second one if the first returns no usable tool call.
 
 | Function | Env var | Default |
 | --- | --- | --- |
-| `generate-recipes`, `cirlo-recipe` | `KILO_MODEL` | `dots-studio/dots-3-note-preview:free` |
+| `generate-recipes`, `cirlo-recipe` | `KILO_MODEL` | `kilo-auto/free` |
 | `generate-recipes`, `cirlo-recipe` | `KILO_FALLBACK_MODEL` | `nvidia/nemotron-3.5-super-vl:free` |
 | `identify-dish` | `KILO_VISION_MODEL` | `nvidia/nemotron-3.5-super-vl:free` |
 | `identify-dish` | `KILO_VISION_FALLBACK_MODEL` | `dots-studio/dots-3-note-preview:free` |
 
 `identify-dish` uses a separate pair because vision needs a model that accepts
-image input. The `kilo-auto/free` router is text-only and is not used.
+image input. The `kilo-auto/free` router is text-only, so it is only used for the text functions.
 
 ## Optional API key
 

@@ -13,7 +13,7 @@ const corsHeaders = {
 // Kilo gateway is OpenAI-compatible and works without a key on the free tier.
 // Both models are overridable by env var because free model ids rotate often.
 const AI_ENDPOINT = "https://ai-gateway.kilo.ai/api/v1/chat/completions";
-const PRIMARY_MODEL = Deno.env.get("KILO_MODEL") ?? "dots-studio/dots-3-note-preview:free";
+const PRIMARY_MODEL = Deno.env.get("KILO_MODEL") ?? "kilo-auto/free";
 const FALLBACK_MODEL = Deno.env.get("KILO_FALLBACK_MODEL") ?? "nvidia/nemotron-3.5-super-vl:free";
 const KILO_API_KEY = Deno.env.get("KILO_API_KEY");
 
@@ -131,7 +131,8 @@ If the text above is real food, generate 3 diverse recipe suggestions. For each 
           },
         },
       ],
-      tool_choice: { type: "function", function: { name: "generate_recipes" } },
+      // kilo-auto/free rejects named/required tool choice; prompt insists on the tool.
+      tool_choice: "auto",
     }),
   });
 
