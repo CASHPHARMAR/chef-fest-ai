@@ -1,13 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, ChefHat, Heart } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { saveRecipe } from "@/lib/savedRecipes";
 import { toast } from "sonner";
-import AuthModal from "./AuthModal";
 
 export interface Recipe {
   name: string;
@@ -25,22 +22,11 @@ interface RecipeCardProps {
 }
 
 const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
-  const { user } = useAuth();
-  const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  const handleSave = async () => {
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    setSaving(true);
-    const { error } = await supabase
-      .from("recipes")
-      .insert({
-        user_id: user.id,
+  const handleSave = () => {
+    try {
+      saveRecipe({
         name: recipe.name,
         description: recipe.description,
         ingredients: recipe.ingredients,
@@ -49,15 +35,11 @@ const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
         difficulty: recipe.difficulty,
         cuisine: recipe.cuisine,
       });
-
-    setSaving(false);
-
-    if (error) {
-      console.error("Error saving recipe:", error);
-      toast.error("Failed to save recipe");
-    } else {
+      setSaving(true);
       toast.success("Recipe saved!");
       if (onSave) onSave();
+    } catch {
+      toast.error("Failed to save recipe");
     }
   };
 
@@ -116,12 +98,6 @@ const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
           </div>
         </div>
       </div>
-      
-      <AuthModal
-        open={showAuthModal}
-        onOpenChange={setShowAuthModal}
-        trigger="save_recipe"
-      />
     </Card>
   );
 };
