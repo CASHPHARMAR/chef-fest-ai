@@ -1,4 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  checkFoodInput,
+  NOT_FOOD_MESSAGE,
+} from "../_shared/foodValidation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,13 +17,8 @@ const PRIMARY_MODEL = Deno.env.get("KILO_MODEL") ?? "dots-studio/dots-3-note-pre
 const FALLBACK_MODEL = Deno.env.get("KILO_FALLBACK_MODEL") ?? "nvidia/nemotron-3.5-super-vl:free";
 const KILO_API_KEY = Deno.env.get("KILO_API_KEY");
 
-const MAX_INGREDIENTS = 1000;
 const MAX_RECIPES = 3;
 const REQUEST_TIMEOUT_MS = 60_000;
-
-// Shown when the model cannot map the input to real food and declines to invent a recipe.
-const NOT_FOOD_MESSAGE =
-  "We couldn't find any recipes for that one. Try listing real ingredients, like \"chicken, rice, garlic\".";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -151,14 +150,27 @@ If the text above is real food, generate 3 diverse recipe suggestions. For each 
     throw new UpstreamError(`Model ${model} returned no recipe data`);
   }
 
-  const parsed = JSON.parse(toolCall.function.arguments);
-
-  // The model decided the input was not food: show a friendly message.
-  if (parsed?.status === "not_food") {
-    return { status: "not_food" as const, message: cleanMessage(parsed.message, NOT_FOOD_MESSAGE) };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(toolCall.function.arguments);
+  } catch {
+    throw new UpstreamError(`Model ${model} returned malformed JSON`);
   }
 
-  const recipes = Array.isArray(parsed?.recipes) ? parsed.recipes : [];
+  const payload = parsed as Record<string, unknown> | null;
+
+  // A missing or unknown status means we cannot tell whether this is food. Do
+  // not guess: fail over to the fallback model, and 502 if that fails too.
+  if (payload?.status !== "ok" && payload?.status !== "not_food") {
+    throw new UpstreamError(`Model ${model} returned no valid status`);
+  }
+
+  // The model decided the input was not food: show a friendly message.
+  if (payload.status === "not_food") {
+    return { status: "not_food" as const, message: cleanMessage(payload.message, NOT_FOOD_MESSAGE) };
+  }
+
+  const recipes = Array.isArray(payload.recipes) ? payload.recipes : [];
   if (recipes.length === 0) {
     throw new UpstreamError(`Model ${model} returned an empty recipe list`);
   }
@@ -178,15 +190,15 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => null);
-    const rawIngredients = (body as Record<string, unknown> | null)?.ingredients;
-    const ingredients = typeof rawIngredients === "string" ? rawIngredients.trim() : "";
+    const check = checkFoodInput((body as Record<string, unknown> | null)?.ingredients);
 
-    if (!ingredients) {
-      return json({ error: "Please provide some ingredients." }, 400);
+    // Empty, whitespace-only, symbol/digit-only and over-long input never reach
+    // the AI, so a bad request cannot cost tokens or invent a recipe.
+    if (check.ok === false) {
+      return json({ error: check.message, problem: check.problem }, 400);
     }
-    if (ingredients.length > MAX_INGREDIENTS) {
-      return json({ error: `Too many ingredients (max ${MAX_INGREDIENTS} characters).` }, 400);
-    }
+
+    const ingredients = check.value;
 
     const models = [PRIMARY_MODEL, FALLBACK_MODEL].filter(
       (model, index, all) => model && all.indexOf(model) === index,

@@ -56,6 +56,33 @@ Free models frequently emit markdown noise (`>`, `:`, `-`) or truncated text in
 the `message` field, so each function sanitises it and substitutes its own copy
 when the result is not a full sentence.
 
+## Input validation
+
+Validation runs in two layers so neither the browser nor the model is trusted on
+its own:
+
+1. **Deterministic** — `supabase/functions/_shared/foodValidation.ts` is imported
+   by both `IngredientsInput.tsx` and `generate-recipes`. It rejects empty,
+   whitespace-only, symbol/digit-only (counted with `\p{L}`, so non-Latin input
+   still passes) and over-long input (`> 1000` chars). The client uses it to
+   avoid a pointless request; the edge function uses it as the real boundary and
+   answers `400` with `{ "error": "…", "problem": "empty" | "too_long" | "no_letters" }`.
+2. **AI food intent** — everything that survives step 1 goes to the model, which
+   must set `status` to `ok` or `not_food`. A missing/invalid `status`, malformed
+   JSON or an empty recipe list is treated as a failure, never as a result: the
+   fallback model is tried, then the function returns `502`. It never invents a
+   recipe because validation failed.
+
+The exact non-food copy for the text flow lives in `NOT_FOOD_MESSAGE` so the
+frontend fallback and the server message cannot drift.
+
+The frontend only renders a response that carries `status`, so **deploy the
+functions before (or together with) the frontend build**. A Vercel push alone
+will leave the page reporting an unexpected response, because the old deployed
+function has no `status` field.
+
+Run the tests with `npm test` (Node's built-in runner, no extra dependencies).
+
 ## Before going public
 
 The free tier logs prompts with the upstream provider and offers no uptime
