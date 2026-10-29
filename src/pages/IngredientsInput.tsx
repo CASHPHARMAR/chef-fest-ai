@@ -2,12 +2,11 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Loader2, Sparkles, AlertCircle } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Recipe {
   name: string;
@@ -40,7 +39,10 @@ const IngredientsInput = () => {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ingredients, recipes }));
-    } catch {}
+    } catch {
+      // Storage is full or unavailable: restoring the last search is a
+      // convenience only, so failing to persist it must not break the page.
+    }
   }, [ingredients, recipes]);
 
   const handleGenerateRecipes = async () => {
@@ -70,11 +72,11 @@ const IngredientsInput = () => {
           description: `Found ${data.recipes.length} delicious recipes for you`,
         });
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error generating recipes:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to generate recipes",
+        description: error instanceof Error ? error.message : "Failed to generate recipes",
         variant: "destructive",
       });
     } finally {
@@ -137,16 +139,8 @@ const IngredientsInput = () => {
           <div className="mt-8 space-y-6">
             <h2 className="text-2xl font-bold">Recipe Suggestions</h2>
             {recipes.map((recipe, idx) => (
-              <RecipeCard
-                key={idx}
-                recipe={recipe}
-                onSave={() => {
-                  toast({
-                    title: "Recipe saved!",
-                    description: "Find it in your Saved Recipes",
-                  });
-                }}
-              />
+              // RecipeCard shows its own confirmation toast when saved.
+              <RecipeCard key={idx} recipe={recipe} />
             ))}
           </div>
         )}

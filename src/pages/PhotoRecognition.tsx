@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Camera, Upload, Loader2, AlertCircle } from "lucide-react";
+import { Camera, Upload, Loader2 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Dish {
   name: string;
@@ -20,36 +19,100 @@ interface Dish {
 
 const STORAGE_KEY = "chef-fest:photo-search";
 
-const PhotoRecognition = () => {
-  const [preview, setPreview] = useState<string | null>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? (JSON.parse(raw).preview ?? null) : null;
-    } catch { return null; }
+// A phone photo is many megabytes; localStorage only holds ~5 MB for the whole
+// site. Downscaling keeps the request small and the UI responsive.
+const MAX_DIMENSION = 1200;
+const JPEG_QUALITY = 0.8;
+
+const compressImage = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("This browser could not process the image"));
+          return;
+        }
+        // Flatten transparency onto white so the photo does not analyse as black.
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", JPEG_QUALITY));
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error("This image could not be processed"));
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("That file could not be read as an image"));
+    };
+
+    img.src = url;
   });
+
+const PhotoRecognition = () => {
+  const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dish, setDish] = useState<Dish | null>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? (JSON.parse(raw).dish ?? null) : null;
+      return raw ? ((JSON.parse(raw) as { dish?: Dish | null }).dish ?? null) : null;
     } catch { return null; }
   });
   const { toast } = useToast();
 
+  // Older builds cached the image itself in localStorage, which overflowed the
+  // quota and silently broke saving recipes. Strip that key on first load.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ preview, dish }));
-    } catch {}
-  }, [preview, dish]);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { preview?: string; dish?: Dish | null };
+      if ("preview" in parsed) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ dish: parsed.dish ?? null }));
+      }
+    } catch {
+      // Unreadable legacy value: nothing worth preserving, so leave it be.
+    }
+  }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+  // Only the small identified dish is persisted; the image stays in memory.
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ dish }));
+    } catch {
+      // Storage full or unavailable: remembering the result is optional.
+    }
+  }, [dish]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      setPreview(await compressImage(file));
+    } catch (error) {
+      toast({
+        title: "Could not load image",
+        description: error instanceof Error ? error.message : "Please try another photo",
+        variant: "destructive",
+      });
+    } finally {
+      // Allow re-picking the same file, which otherwise fires no change event.
+      input.value = "";
     }
   };
 
@@ -80,11 +143,11 @@ const PhotoRecognition = () => {
           description: `Detected: ${data.dish.name}`,
         });
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error analyzing image:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to analyze image",
+        description: error instanceof Error ? error.message : "Failed to analyze image",
         variant: "destructive",
       });
     } finally {
@@ -181,15 +244,8 @@ const PhotoRecognition = () => {
         {dish && (
           <div className="mt-8 animate-in fade-in-0 slide-in-from-bottom-4">
             <h2 className="text-2xl font-bold mb-4">Identified Dish</h2>
-            <RecipeCard
-              recipe={dish}
-              onSave={() => {
-                toast({
-                  title: "Recipe saved!",
-                  description: "Find it in your Saved Recipes",
-                });
-              }}
-            />
+            {/* RecipeCard shows its own confirmation toast when saved. */}
+            <RecipeCard recipe={dish} />
           </div>
         )}
       </div>

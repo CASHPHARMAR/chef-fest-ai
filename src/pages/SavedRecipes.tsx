@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Trash2, Clock, ChefHat, Heart, Sparkles } from "lucide-react";
+import { BookOpen, Trash2, Clock, ChefHat } from "lucide-react";
 import Navigation from "@/components/Navigation";
-import { getSavedRecipes, deleteSavedRecipe } from "@/lib/savedRecipes";
+import { getSavedRecipes, deleteSavedRecipe, type SavedRecipe } from "@/lib/savedRecipes";
 import { toast } from "sonner";
 
 const SavedRecipes = () => {
   const navigate = useNavigate();
-  const [savedRecipes, setSavedRecipes] = useState<any[]>([]);
+  const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
 
   useEffect(() => {
     setSavedRecipes(getSavedRecipes());
@@ -89,11 +89,11 @@ const SavedRecipes = () => {
                 <div className="mb-4">
                   <h4 className="font-semibold mb-2 text-sm">Ingredients:</h4>
                   <ul className="text-sm text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
-                    {recipe.ingredients?.slice(0, 3).map((ingredient: string, idx: number) => (
+                    {(recipe.ingredients ?? []).slice(0, 3).map((ingredient, idx) => (
                       <li key={idx}>• {ingredient}</li>
                     ))}
-                    {recipe.ingredients?.length > 3 && (
-                      <li className="text-primary">+ {recipe.ingredients.length - 3} more</li>
+                    {(recipe.ingredients ?? []).length > 3 && (
+                      <li className="text-primary">+ {(recipe.ingredients ?? []).length - 3} more</li>
                     )}
                   </ul>
                 </div>
@@ -101,11 +101,11 @@ const SavedRecipes = () => {
                 <div>
                   <h4 className="font-semibold mb-2 text-sm">Steps:</h4>
                   <ol className="text-sm text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
-                    {recipe.steps?.slice(0, 2).map((step: string, idx: number) => (
+                    {(recipe.steps ?? []).slice(0, 2).map((step, idx) => (
                       <li key={idx}>{idx + 1}. {step}</li>
                     ))}
-                    {recipe.steps?.length > 2 && (
-                      <li className="text-primary">+ {recipe.steps.length - 2} more steps</li>
+                    {(recipe.steps ?? []).length > 2 && (
+                      <li className="text-primary">+ {(recipe.steps ?? []).length - 2} more steps</li>
                     )}
                   </ol>
                 </div>

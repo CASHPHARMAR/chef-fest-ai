@@ -18,10 +18,9 @@ export interface Recipe {
 
 interface RecipeCardProps {
   recipe: Recipe;
-  onSave?: () => void;
 }
 
-const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
+const RecipeCard = ({ recipe }: RecipeCardProps) => {
   const [saving, setSaving] = useState(false);
 
   const handleSave = () => {
@@ -37,7 +36,6 @@ const RecipeCard = ({ recipe, onSave }: RecipeCardProps) => {
       });
       setSaving(true);
       toast.success("Recipe saved!");
-      if (onSave) onSave();
     } catch {
       toast.error("Failed to save recipe");
     }
