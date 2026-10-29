@@ -5,6 +5,8 @@ import {
   checkFoodInput,
   MAX_INGREDIENTS,
   NOT_FOOD_MESSAGE,
+  UNCERTAIN_MESSAGE,
+  UNAVAILABLE_MESSAGE,
   EMPTY_MESSAGE,
 } from "./foodValidation.ts";
 
@@ -102,8 +104,15 @@ test("trims surrounding whitespace", () => {
 test("uses the exact required copy for non-food input", () => {
   assert.equal(
     NOT_FOOD_MESSAGE,
-    "Hmm, we couldn't identify any food or ingredients in your input. 🍅 Please enter a food name or ingredients so we can find a delicious recipe for you!",
+    "Hmm, we couldn't identify any food or ingredients in your input. 🍅 Please enter a food name, dish, or ingredients so we can help you create a delicious recipe!",
   );
+});
+
+test("uncertain and unavailable copy are distinct from the invalid copy", () => {
+  assert.match(UNCERTAIN_MESSAGE, /not quite sure which food/);
+  assert.match(UNAVAILABLE_MESSAGE, /temporarily unavailable/);
+  assert.notEqual(UNCERTAIN_MESSAGE, NOT_FOOD_MESSAGE);
+  assert.notEqual(UNAVAILABLE_MESSAGE, NOT_FOOD_MESSAGE);
 });
 
 test("empty input gets its own message so it is distinguishable", () => {

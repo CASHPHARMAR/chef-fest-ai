@@ -7,17 +7,36 @@ the previous Lovable gateway; no Lovable credentials are required any more.
 ## Models
 
 Free model ids rotate, so every function reads its model from an env var and
-falls back to a second one if the first returns no usable tool call.
+falls back to a second one if the first returns no usable response.
 
 | Function | Env var | Default |
 | --- | --- | --- |
 | `generate-recipes`, `cirlo-recipe` | `KILO_MODEL` | `dots-studio/dots-3-note-preview:free` |
 | `generate-recipes`, `cirlo-recipe` | `KILO_FALLBACK_MODEL` | `nvidia/nemotron-3.5-super-vl:free` |
+| `generate-recipes` (validation) | `KILO_VALIDATION_MODELS` | `recursive/flint-v1.0:free,stealth/glyph-cluster,dots-studio/dots-3-note-preview:free` |
 | `identify-dish` | `KILO_VISION_MODEL` | `nvidia/nemotron-3.5-super-vl:free` |
 | `identify-dish` | `KILO_VISION_FALLBACK_MODEL` | `dots-studio/dots-3-note-preview:free` |
 
+`KILO_VALIDATION_MODELS` is a comma-separated fallback chain for the food
+validator. Each model gets exactly one attempt; the first usable answer wins.
+
 `identify-dish` uses a separate pair because vision needs a model that accepts
-image input. The `kilo-auto/free` router is text-only and is not used.
+image input. The `kilo-auto/free` router is text-only and is not used there.
+
+## The blank-response problem
+
+Several free models are reasoning models: they emit a `reasoning` field *and* a
+`content` field, and both count against `max_tokens`. With a small budget the
+model spends everything on reasoning and the gateway still answers **HTTP 200**
+with `content: null` and `finish_reason: "length"`. Observed with
+`max_tokens: 300` (`reasoning_tokens: 325`, `content: null`).
+
+The validator therefore:
+
+- requests `max_tokens: 2000`, which leaves room for reasoning plus the answer;
+- treats `content: null`, whitespace-only content and `finish_reason: "length"`
+  as failures, never as "probably valid";
+- moves to the next model in the chain on any failure.
 
 ## Optional API key
 
@@ -26,10 +45,12 @@ The gateway accepts unauthenticated requests on the free tier. If you set
 and they work without one.
 
 ```bash
-supabase secrets set KILO_API_KEY=... KILO_MODEL=... KILO_VISION_MODEL=...
+supabase secrets set KILO_API_KEY=... KILO_MODEL=... KILO_VISION_MODEL=... KILO_VALIDATION_MODELS=...
 ```
 
 Each function also honours `(*_FALLBACK_*)` overrides if you want to pin models.
+The key is read with `Deno.env.get` only — never `VITE_*`, so it is never
+bundled into the browser build.
 
 ## Deployment
 
@@ -66,15 +87,28 @@ its own:
    whitespace-only, symbol/digit-only (counted with `\p{L}`, so non-Latin input
    still passes) and over-long input (`> 1000` chars). The client uses it to
    avoid a pointless request; the edge function uses it as the real boundary and
-   answers `400` with `{ "error": "…", "problem": "empty" | "too_long" | "no_letters" }`.
-2. **AI food intent** — everything that survives step 1 goes to the model, which
-   must set `status` to `ok` or `not_food`. A missing/invalid `status`, malformed
-   JSON or an empty recipe list is treated as a failure, never as a result: the
-   fallback model is tried, then the function returns `502`. It never invents a
-   recipe because validation failed.
+   answers `400` with `{ "status": "invalid", "error": "…", "problem": "empty" | "too_long" | "no_letters" }`.
+2. **Semantic food validation** — `supabase/functions/_shared/foodValidator.ts`
+   asks Kilo to classify the input *before* the recipe model runs. The model must
+   return strict JSON with `status` in `valid_food | valid_ingredients | invalid |
+   uncertain`. Empty content, truncated output, malformed JSON, a schema
+   mismatch, a timeout, a 429 or a 5xx are all treated as failures: the next
+   model in `KILO_VALIDATION_MODELS` is tried once, and if every model fails the
+   function returns `503` instead of generating an unvalidated recipe.
 
-The exact non-food copy for the text flow lives in `NOT_FOOD_MESSAGE` so the
-frontend fallback and the server message cannot drift.
+Verdicts returned by `generate-recipes`:
+
+| Verdict | HTTP | Body |
+| --- | --- | --- |
+| `valid_food` / `valid_ingredients` | 200 | `{ "status": "ok", "recipes": [...] }` |
+| `invalid` | 200 | `{ "status": "invalid", "message": "…" }` |
+| `uncertain` | 200 | `{ "status": "uncertain", "message": "…" }` |
+| validator unavailable | 503 | `{ "status": "unavailable", "error": "…" }` |
+
+The user-facing copy for all three cases lives in `foodValidation.ts`
+(`NOT_FOOD_MESSAGE`, `UNCERTAIN_MESSAGE`, `UNAVAILABLE_MESSAGE`) so the frontend
+and the server cannot drift. Raw provider errors and stack traces are never
+returned to the browser.
 
 The frontend only renders a response that carries `status`, so **deploy the
 functions before (or together with) the frontend build**. A Vercel push alone
@@ -82,6 +116,7 @@ will leave the page reporting an unexpected response, because the old deployed
 function has no `status` field.
 
 Run the tests with `npm test` (Node's built-in runner, no extra dependencies).
+The validator tests use a fake `fetch`, so they never call Kilo.
 
 ## Before going public
 
