@@ -6,9 +6,6 @@ import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
-import AuthModal from "@/components/AuthModal";
-import { useAuth } from "@/hooks/useAuth";
-import { useGuestMode } from "@/hooks/useGuestMode";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Dish {
@@ -38,16 +35,6 @@ const PhotoRecognition = () => {
     } catch { return null; }
   });
   const { toast } = useToast();
-  const { user } = useAuth();
-  const { 
-    guestRecipeCount, 
-    incrementGuestCount, 
-    canGenerateRecipe, 
-    hasReachedLimit,
-    showAuthModal,
-    setShowAuthModal,
-    maxRecipes 
-  } = useGuestMode();
 
   useEffect(() => {
     try {
@@ -76,17 +63,6 @@ const PhotoRecognition = () => {
       return;
     }
 
-    // Check guest limit
-    if (!user && hasReachedLimit()) {
-      setShowAuthModal(true);
-      toast({
-        title: "Preview limit reached",
-        description: "Sign up to identify unlimited dishes!",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setLoading(true);
     setDish(null);
     try {
@@ -98,11 +74,6 @@ const PhotoRecognition = () => {
 
       if (data?.dish) {
         setDish(data.dish);
-        
-        // Increment guest count if not logged in
-        if (!user) {
-          incrementGuestCount();
-        }
         
         toast({
           title: "Dish identified!",
@@ -132,15 +103,6 @@ const PhotoRecognition = () => {
             Upload or snap a photo to discover the recipe
           </p>
         </div>
-
-        {!user && (
-          <Alert className="mb-6 border-primary/20 bg-primary/5 animate-in fade-in-0 slide-in-from-top-4">
-            <AlertCircle className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-sm">
-              <strong>Guest Preview Mode:</strong> You can identify <strong>{maxRecipes - guestRecipeCount}</strong> more dish{maxRecipes - guestRecipeCount !== 1 ? 'es' : ''} before signing up.
-            </AlertDescription>
-          </Alert>
-        )}
 
         <Card className="p-6 shadow-warm">
           <div className="space-y-6">
@@ -231,12 +193,6 @@ const PhotoRecognition = () => {
           </div>
         )}
       </div>
-      
-      <AuthModal
-        open={showAuthModal}
-        onOpenChange={setShowAuthModal}
-        trigger={guestRecipeCount === 1 ? "first_recipe" : "limit_reached"}
-      />
     </div>
   );
 };
