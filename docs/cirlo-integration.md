@@ -59,7 +59,6 @@ The token is dedicated to Cirlo only. It is not a Chef Fest user token and carri
 | 401 | missing or invalid token |
 | 405 | method other than `POST` |
 | 429 | rate limit — retry with backoff |
-| 402 | AI credits exhausted on the Chef Fest side |
 | 502 / 500 | upstream AI or server error |
 
 All errors return `{ "error": "message" }`.

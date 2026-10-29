@@ -20,6 +20,104 @@ function safeEqual(a: string, b: string) {
   return diff === 0;
 }
 
+// Kilo gateway is OpenAI-compatible and works without a key on the free tier.
+const AI_ENDPOINT = "https://ai-gateway.kilo.ai/api/v1/chat/completions";
+const PRIMARY_MODEL = Deno.env.get("KILO_MODEL") ?? "dots-studio/dots-3-note-preview:free";
+const FALLBACK_MODEL = Deno.env.get("KILO_FALLBACK_MODEL") ?? "nvidia/nemotron-3.5-super-vl:free";
+const KILO_API_KEY = Deno.env.get("KILO_API_KEY");
+const AI_TIMEOUT_MS = 60_000;
+
+const aiHeaders = () => {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (KILO_API_KEY) headers.Authorization = `Bearer ${KILO_API_KEY}`;
+  return headers;
+};
+
+class UpstreamError extends Error {
+  status: number;
+  constructor(message: string, status = 502) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const recipesSchema = {
+  type: "object",
+  properties: {
+    recipes: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          description: { type: "string" },
+          ingredients: { type: "array", items: { type: "string" } },
+          steps: { type: "array", items: { type: "string" } },
+          cookTime: { type: "string" },
+          difficulty: { type: "string", enum: ["Easy", "Medium", "Hard"] },
+          cuisine: { type: "string" },
+        },
+        required: ["name", "description", "ingredients", "steps", "cookTime", "difficulty", "cuisine"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["recipes"],
+  additionalProperties: false,
+};
+
+async function generateWithModel(model: string, prompt: string): Promise<unknown[]> {
+  const response = await fetch(AI_ENDPOINT, {
+    method: "POST",
+    headers: aiHeaders(),
+    signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are Chef Fest AI, a professional chef assistant that generates creative, practical recipes.",
+        },
+        { role: "user", content: prompt },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "generate_recipes",
+            description: "Generate recipe suggestions",
+            parameters: recipesSchema,
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "generate_recipes" } },
+    }),
+  });
+
+  if (!response.ok) {
+    console.error(`Kilo gateway ${response.status} for ${model}:`, (await response.text().catch(() => "")).slice(0, 500));
+    if (response.status === 429) {
+      throw new UpstreamError("Rate limit exceeded. Try again later.", 429);
+    }
+    throw new UpstreamError(`AI provider error (${response.status})`);
+  }
+
+  const data = await response.json();
+  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  if (!toolCall?.function?.arguments) {
+    throw new UpstreamError(`Model ${model} returned no recipe data`);
+  }
+
+  const recipes = JSON.parse(toolCall.function.arguments).recipes ?? [];
+  if (!Array.isArray(recipes) || recipes.length === 0) {
+    throw new UpstreamError(`Model ${model} returned an empty recipe list`);
+  }
+
+  return recipes;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,9 +128,8 @@ serve(async (req) => {
   }
 
   const CIRLO_API_TOKEN = Deno.env.get("CIRLO_API_TOKEN");
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-  if (!CIRLO_API_TOKEN || !LOVABLE_API_KEY) {
+  if (!CIRLO_API_TOKEN) {
     console.error("Missing server configuration");
     return json({ error: "Server not configured" }, 500);
   }
@@ -87,79 +184,31 @@ serve(async (req) => {
       .filter(Boolean)
       .join("\n");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are Chef Fest AI, a professional chef assistant that generates creative, practical recipes.",
-          },
-          { role: "user", content: prompt },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "generate_recipes",
-              description: "Generate recipe suggestions",
-              parameters: {
-                type: "object",
-                properties: {
-                  recipes: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        description: { type: "string" },
-                        ingredients: { type: "array", items: { type: "string" } },
-                        steps: { type: "array", items: { type: "string" } },
-                        cookTime: { type: "string" },
-                        difficulty: { type: "string", enum: ["Easy", "Medium", "Hard"] },
-                        cuisine: { type: "string" },
-                      },
-                      required: [
-                        "name",
-                        "description",
-                        "ingredients",
-                        "steps",
-                        "cookTime",
-                        "difficulty",
-                        "cuisine",
-                      ],
-                      additionalProperties: false,
-                    },
-                  },
-                },
-                required: ["recipes"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "generate_recipes" } },
-      }),
-    });
+    const models = [PRIMARY_MODEL, FALLBACK_MODEL].filter(
+      (model, index, all) => model && all.indexOf(model) === index,
+    );
 
-    if (!response.ok) {
-      if (response.status === 429) return json({ error: "Rate limit exceeded. Try again later." }, 429);
-      if (response.status === 402) return json({ error: "AI credits exhausted." }, 402);
-      console.error("AI gateway error:", response.status, await response.text());
-      return json({ error: "Upstream AI error" }, 502);
+    let recipes: unknown[] | null = null;
+    let lastError: UpstreamError | null = null;
+
+    for (const model of models) {
+      try {
+        recipes = await generateWithModel(model, prompt);
+        break;
+      } catch (error) {
+        lastError = error instanceof UpstreamError
+          ? error
+          : new UpstreamError("Unexpected error while generating recipes");
+        console.error(`cirlo-recipe: ${model} failed:`, error);
+      }
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) return json({ error: "No recipe generated" }, 502);
-
-    const recipes = JSON.parse(toolCall.function.arguments).recipes ?? [];
+    if (!recipes) {
+      return json(
+        { error: lastError?.message ?? "Upstream AI error" },
+        lastError?.status ?? 502,
+      );
+    }
 
     return json({
       source: "chef-fest-ai",
