@@ -13,7 +13,13 @@ export const MAX_INGREDIENTS = 1000;
 const MIN_LETTERS = 2;
 
 export const NOT_FOOD_MESSAGE =
-  "Hmm, we couldn't identify any food or ingredients in your input. \u{1F345} Please enter a food name or ingredients so we can find a delicious recipe for you!";
+  "Hmm, we couldn't identify any food or ingredients in your input. \u{1F345} Please enter a food name, dish, or ingredients so we can help you create a delicious recipe!";
+
+export const UNCERTAIN_MESSAGE =
+  "We're not quite sure which food you mean. Could you check the spelling or tell us a little more about the dish or ingredients?";
+
+export const UNAVAILABLE_MESSAGE =
+  "Recipe validation is temporarily unavailable. Please try again in a moment.";
 
 export const EMPTY_MESSAGE = "Please enter a food name or some ingredients first.";
 

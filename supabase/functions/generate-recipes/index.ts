@@ -2,7 +2,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   checkFoodInput,
   NOT_FOOD_MESSAGE,
+  UNCERTAIN_MESSAGE,
+  UNAVAILABLE_MESSAGE,
 } from "../_shared/foodValidation.ts";
+import {
+  extractJsonObject,
+  modelsFromEnv,
+  validateFoodInput,
+  ValidationUnavailableError,
+} from "../_shared/foodValidator.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,6 +25,9 @@ const PRIMARY_MODEL = Deno.env.get("KILO_MODEL") ?? "kilo-auto/free";
 const FALLBACK_MODEL = Deno.env.get("KILO_FALLBACK_MODEL") ?? "nvidia/nemotron-3.5-super-vl:free";
 const KILO_API_KEY = Deno.env.get("KILO_API_KEY");
 
+// Server-only. Never expose this through a VITE_* variable or the bundle.
+const VALIDATION_MODELS = modelsFromEnv(Deno.env.get("KILO_VALIDATION_MODELS"));
+
 const MAX_RECIPES = 3;
 const REQUEST_TIMEOUT_MS = 60_000;
 
@@ -30,20 +41,6 @@ const aiHeaders = () => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (KILO_API_KEY) headers.Authorization = `Bearer ${KILO_API_KEY}`;
   return headers;
-};
-
-/**
- * Free models often emit markdown noise (">", ":", "-") or a truncated string in
- * the message field, so anything that is not a real sentence falls back to our
- * own copy. The user must never see ":" as an explanation.
- */
-const cleanMessage = (raw: unknown, fallback: string) => {
-  if (typeof raw !== "string") return fallback;
-  const text = raw
-    .replace(/^[\s>:#*_\-–—]+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return text.length >= 25 ? text : fallback;
 };
 
 class UpstreamError extends Error {
@@ -90,19 +87,14 @@ const recipeSchema = {
 
 const systemPrompt = `You are a professional chef AI assistant that generates creative, practical recipes.
 
-Before writing anything, decide whether the user's text describes real food, drink or cooking ingredients.
+The user's input has already been validated as food, so always set status to "ok" and fill recipes with real dishes.
 
-- If it does, set status to "ok", leave message empty, and fill recipes with real dishes.
-- If it does not, set status to "not_food", leave recipes as an empty array, and write a short, warm message explaining you could not find recipes for what they typed, then invite them to list real ingredients.
-
-Treat these as not_food: random characters ("asdfghjkl", "qwerty"), unrelated words ("my homework", "battery acid"), inedible or dangerous items ("plastic", "bleach", "glass"), single letters, and empty or meaningless input.
-
-Never invent ingredients to force a recipe. Guessing is worse than saying you do not know. Always respond with valid JSON.`;
+Never invent ingredients to force a recipe. Always respond with valid JSON.`;
 
 async function generateWithModel(model: string, ingredients: string) {
   const prompt = `Ingredients from the user: ${ingredients}
 
-If the text above is real food, generate 3 diverse recipe suggestions. For each recipe provide:
+Generate 3 diverse recipe suggestions. For each recipe provide:
 1. Recipe name
 2. Full ingredients list (including what they provided plus common pantry items)
 3. Step-by-step preparation instructions
@@ -126,7 +118,7 @@ If the text above is real food, generate 3 diverse recipe suggestions. For each 
           type: "function",
           function: {
             name: "generate_recipes",
-            description: "Return either recipes, or a friendly explanation that the input was not food",
+            description: "Return recipe suggestions for validated food input",
             parameters: recipeSchema,
           },
         },
@@ -137,8 +129,10 @@ If the text above is real food, generate 3 diverse recipe suggestions. For each 
   });
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    console.error(`Kilo gateway ${response.status} for ${model}:`, detail.slice(0, 500));
+    // Drain the body so the connection is released, but never log it: provider
+    // error payloads can echo the prompt back.
+    await response.text().catch(() => "");
+    console.error(`generate-recipes: upstream HTTP ${response.status} from ${model}`);
     if (response.status === 429) {
       throw new UpstreamError("Rate limit exceeded. Please try again in a moment.", 429);
     }
@@ -146,37 +140,33 @@ If the text above is real food, generate 3 diverse recipe suggestions. For each 
   }
 
   const data = await response.json();
-  const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall?.function?.arguments) {
+  const message = data?.choices?.[0]?.message;
+  const toolArguments = message?.tool_calls?.[0]?.function?.arguments;
+
+  // Some models answer with JSON in `content` instead of a tool call.
+  const parsed = toolArguments
+    ? extractJsonObject(toolArguments)
+    : extractJsonObject(message?.content);
+
+  if (!parsed) {
     throw new UpstreamError(`Model ${model} returned no recipe data`);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(toolCall.function.arguments);
-  } catch {
-    throw new UpstreamError(`Model ${model} returned malformed JSON`);
+  // The generator is only reached after validation, so a not_food answer here
+  // means the model disagreed. Treat it as invalid instead of inventing output.
+  if (parsed.status === "not_food") {
+    return { status: "not_food" as const };
   }
 
-  const payload = parsed as Record<string, unknown> | null;
-
-  // A missing or unknown status means we cannot tell whether this is food. Do
-  // not guess: fail over to the fallback model, and 502 if that fails too.
-  if (payload?.status !== "ok" && payload?.status !== "not_food") {
+  if (parsed.status !== "ok") {
     throw new UpstreamError(`Model ${model} returned no valid status`);
   }
 
-  // The model decided the input was not food: show a friendly message.
-  if (payload.status === "not_food") {
-    return { status: "not_food" as const, message: cleanMessage(payload.message, NOT_FOOD_MESSAGE) };
-  }
-
-  const recipes = Array.isArray(payload.recipes) ? payload.recipes : [];
+  const recipes = Array.isArray(parsed.recipes) ? parsed.recipes : [];
   if (recipes.length === 0) {
     throw new UpstreamError(`Model ${model} returned an empty recipe list`);
   }
 
-  // Models occasionally ignore the "3 recipes" instruction; keep the page sane.
   return { status: "ok" as const, recipes: recipes.slice(0, MAX_RECIPES) };
 }
 
@@ -196,11 +186,40 @@ serve(async (req) => {
     // Empty, whitespace-only, symbol/digit-only and over-long input never reach
     // the AI, so a bad request cannot cost tokens or invent a recipe.
     if (check.ok === false) {
-      return json({ error: check.message, problem: check.problem }, 400);
+      return json(
+        { status: "invalid", error: check.message, problem: check.problem },
+        400,
+      );
     }
 
     const ingredients = check.value;
 
+    // Layer B: semantic validation happens before generation and cannot be
+    // skipped, because this function is the only path to the recipe model.
+    let verdict;
+    try {
+      verdict = await validateFoodInput(ingredients, {
+        apiKey: KILO_API_KEY,
+        models: VALIDATION_MODELS,
+      });
+    } catch (error) {
+      if (error instanceof ValidationUnavailableError) {
+        // Distinguish "we could not check" from "this is not food": never fall
+        // back to unvalidated recipe generation.
+        return json({ status: "unavailable", error: UNAVAILABLE_MESSAGE }, 503);
+      }
+      throw error;
+    }
+
+    if (verdict.status === "invalid") {
+      return json({ status: "invalid", message: NOT_FOOD_MESSAGE });
+    }
+
+    if (verdict.status === "uncertain") {
+      return json({ status: "uncertain", message: UNCERTAIN_MESSAGE });
+    }
+
+    const recipeInput = verdict.normalizedInput || ingredients;
     const models = [PRIMARY_MODEL, FALLBACK_MODEL].filter(
       (model, index, all) => model && all.indexOf(model) === index,
     );
@@ -208,7 +227,10 @@ serve(async (req) => {
     let lastError: UpstreamError | null = null;
     for (const model of models) {
       try {
-        const result = await generateWithModel(model, ingredients);
+        const result = await generateWithModel(model, recipeInput);
+        if (result.status === "not_food") {
+          return json({ status: "invalid", message: NOT_FOOD_MESSAGE });
+        }
         return json(result);
       } catch (error) {
         lastError = error instanceof UpstreamError
@@ -218,14 +240,18 @@ serve(async (req) => {
       }
     }
 
+    // Do not leak provider details to the browser.
     return json(
-      { error: lastError?.message ?? "Could not generate recipes right now." },
-      lastError?.status ?? 502,
+      {
+        status: "unavailable",
+        error: "We couldn't create recipes right now. Please try again in a moment.",
+      },
+      lastError?.status === 429 ? 429 : 502,
     );
   } catch (error) {
     console.error("Error in generate-recipes:", error);
     return json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: "error", error: "Something went wrong. Please try again." },
       500,
     );
   }
