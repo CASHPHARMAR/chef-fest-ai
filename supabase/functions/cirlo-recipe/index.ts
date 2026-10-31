@@ -241,10 +241,17 @@ serve(async (req) => {
     }
 
     if (!recipes) {
-      return json(
-        { error: lastError?.message ?? "Upstream AI error" },
-        lastError?.status ?? 502,
-      );
+      const status = lastError?.status ?? 502;
+      // 422 carries a vetted, user-facing explanation. Every other failure is a
+      // provider detail (model ids, upstream status codes) that must stay in the
+      // logs, never in the response.
+      const error =
+        status === 422
+          ? lastError?.message ?? "No recipes could be found for that request. Try listing real ingredients."
+          : status === 429
+            ? "Rate limit reached. Please try again shortly."
+            : "Recipe generation is temporarily unavailable. Please try again in a moment.";
+      return json({ error }, status);
     }
 
     return json({

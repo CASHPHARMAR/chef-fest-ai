@@ -136,7 +136,9 @@ async function identifyWithModel(model: string, image: string) {
   const data = await response.json();
   const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
   if (!toolCall?.function?.arguments) {
-    throw new UpstreamError(`Model ${model} could not identify the dish`);
+    // Never put the model id (or any provider detail) in a message that can
+    // reach the caller; it is only logged below.
+    throw new UpstreamError("We couldn't identify that dish. Please try another photo.");
   }
 
   const parsed = JSON.parse(toolCall.function.arguments);
@@ -146,7 +148,7 @@ async function identifyWithModel(model: string, image: string) {
   }
 
   if (typeof parsed?.name !== "string" || !parsed.name.trim() || !Array.isArray(parsed.ingredients)) {
-    throw new UpstreamError(`Model ${model} returned an incomplete dish`);
+    throw new UpstreamError("We couldn't identify that dish. Please try another photo.");
   }
 
   const { status: _status, message: _message, ...dish } = parsed;
@@ -197,9 +199,6 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Error in identify-dish:", error);
-    return json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      500,
-    );
+    return json({ error: "Dish recognition is temporarily unavailable. Please try again." }, 500);
   }
 });

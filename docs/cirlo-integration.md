@@ -62,7 +62,16 @@ The token is dedicated to Cirlo only. It is not a Chef Fest user token and carri
 | 429 | rate limit — retry with backoff |
 | 502 / 500 | upstream AI or server error |
 
-All errors return `{ "error": "message" }`.
+All errors return `{ "error": "message" }`. Error messages never contain model names or provider details, so they are safe to log but should still not be shown raw to end users except the `422` message, which is written for that purpose.
+
+## Rate limits and caching
+
+Chef Fest's AI backend runs on a free upstream tier shared with the Chef Fest website: roughly **200 generations per hour, across all callers**. There is no separate quota per token yet, so:
+
+- Do **not** poll or batch-generate. Generate on user action only.
+- Cache results per request signature for at least a few minutes.
+- Treat `429` as a normal, expected answer: back off exponentially and show a friendly retry message.
+- If Cirlo's expected volume is more than occasional, tell us the forecast so we can size the quota before launch rather than after.
 
 ## Example
 
@@ -94,6 +103,19 @@ const data = await res.json();
 
 ## Token handover checklist (Chef Fest side)
 
-1. Generate: `openssl rand -hex 32`.
-2. Save that exact value in Chef Fest as the `CIRLO_API_TOKEN` secret.
+1. Token generated with 32 random bytes and the `cf_live_` prefix (72 characters).
+2. Stored in Chef Fest as the `CIRLO_API_TOKEN` secret — set in Supabase, never in this repo.
 3. Send the value to Cirlo via a password-manager share link or their encrypted secrets field — never email or chat.
+4. Verify from a terminal before handover: no token → `401`, wrong token → `401`, valid token → `200` with recipes, non-food → `422`, `GET` → `405`. (All confirmed.)
+
+## Verified behaviour (last check)
+
+| Case | Result |
+| --- | --- |
+| `POST` with no token | `401 {"error":"Unauthorized"}` |
+| `POST` with wrong token | `401 {"error":"Unauthorized"}` |
+| `POST` with `Authorization: Bearer` | `200`, correct recipe count |
+| `POST` with `x-cirlo-token` | `200`, correct recipe count |
+| `POST` with `"a laptop charger"` | `422`, friendly non-food message |
+| `POST` with `{}` | `400`, explains required fields |
+| `GET` | `405 {"error":"Method not allowed"}` |
