@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   checkFoodInput,
   NOT_FOOD_MESSAGE,
+  RATE_LIMIT_MESSAGE,
   UNCERTAIN_MESSAGE,
   UNAVAILABLE_MESSAGE,
 } from "../_shared/foodValidation.ts";
@@ -11,12 +12,20 @@ import {
   validateFoodInput,
   ValidationUnavailableError,
 } from "../_shared/foodValidator.ts";
+import {
+  clientKey,
+  corsHeadersFor,
+  createRateLimiter,
+  isDisallowedOrigin,
+  limitFromEnv,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+// Generating a recipe is the expensive call, so a client gets a small budget of
+// real generations per minute instead of a cap on every request.
+const rateLimiter = createRateLimiter({
+  limit: limitFromEnv("RATE_LIMIT_GENERATE_PER_MIN", 10),
+  windowMs: 60_000,
+});
 
 // Kilo gateway is OpenAI-compatible and works without a key on the free tier.
 // Both models are overridable by env var because free model ids rotate often.
@@ -30,12 +39,6 @@ const VALIDATION_MODELS = modelsFromEnv(Deno.env.get("KILO_VALIDATION_MODELS"));
 
 const MAX_RECIPES = 3;
 const REQUEST_TIMEOUT_MS = 60_000;
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
 
 const aiHeaders = () => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -171,12 +174,34 @@ Generate 3 diverse recipe suggestions. For each recipe provide:
 }
 
 serve(async (req) => {
+  const cors = corsHeadersFor(req);
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors });
+  }
+
+  // Per-request so the allowed origin is echoed back instead of a wildcard.
+  const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, ...extra, 'Content-Type': 'application/json' },
+    });
+
+  // A browser from an origin we do not serve is refused outright; the CORS
+  // headers alone would only hide the response, not stop the work.
+  if (isDisallowedOrigin(req)) {
+    return json({ status: 'error', error: 'Origin not allowed.' }, 403);
   }
 
   if (req.method !== 'POST') {
     return json({ error: "Method not allowed" }, 405);
+  }
+
+  const verdict = rateLimiter.check(clientKey(req));
+  if (!verdict.allowed) {
+    return json({ status: 'rate_limited', error: RATE_LIMIT_MESSAGE }, 429, {
+      'Retry-After': String(verdict.retryAfter),
+    });
   }
 
   try {

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Loader2, Sparkles, AlertCircle, HelpCircle, CloudOff } from "lucide-react";
+import { Loader2, Sparkles, AlertCircle, HelpCircle, CloudOff, Timer } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   checkFoodInput,
   NOT_FOOD_MESSAGE,
+  RATE_LIMIT_MESSAGE,
   UNCERTAIN_MESSAGE,
   UNAVAILABLE_MESSAGE,
 } from "../../supabase/functions/_shared/foodValidation";
@@ -25,13 +26,14 @@ interface Recipe {
   cuisine: string;
 }
 
-type NoticeKind = "invalid" | "uncertain" | "unavailable";
+type NoticeKind = "invalid" | "uncertain" | "unavailable" | "rate_limited";
 
 const STORAGE_KEY = "chef-fest:ingredients-search";
 
 const noticeIcon = (kind: NoticeKind) => {
   if (kind === "uncertain") return <HelpCircle className="h-4 w-4" />;
   if (kind === "unavailable") return <CloudOff className="h-4 w-4" />;
+  if (kind === "rate_limited") return <Timer className="h-4 w-4" />;
   return <AlertCircle className="h-4 w-4" />;
 };
 
@@ -41,11 +43,15 @@ const noticeIcon = (kind: NoticeKind) => {
  */
 const readErrorNotice = async (error: unknown): Promise<NoticeKind> => {
   const context = (error as { context?: Response } | null)?.context;
+  // The function sends a 429 together with `status: "rate_limited"`, but a
+  // proxy-level 429 may arrive without our body, so the status code also counts.
+  if (context?.status === 429) return "rate_limited";
   if (context && typeof context.json === "function") {
     try {
       const payload = await context.json() as { status?: string };
       if (payload?.status === "uncertain") return "uncertain";
       if (payload?.status === "invalid") return "invalid";
+      if (payload?.status === "rate_limited") return "rate_limited";
     } catch {
       // Body was empty or not JSON: fall through to the safe default.
     }
@@ -117,9 +123,14 @@ const IngredientsInput = () => {
           ? UNCERTAIN_MESSAGE
           : kind === "invalid"
             ? NOT_FOOD_MESSAGE
-            : UNAVAILABLE_MESSAGE;
+            : kind === "rate_limited"
+              ? RATE_LIMIT_MESSAGE
+              : UNAVAILABLE_MESSAGE;
         showNotice(kind, message);
-        toast({ title: "No recipes yet", description: message });
+        toast({
+          title: kind === "rate_limited" ? "One moment" : "No recipes yet",
+          description: message,
+        });
         return;
       }
 

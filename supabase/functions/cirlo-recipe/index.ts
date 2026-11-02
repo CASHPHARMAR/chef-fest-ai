@@ -1,16 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  corsHeadersFor,
+  createRateLimiter,
+  fingerprint,
+  isDisallowedOrigin,
+  limitFromEnv,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cirlo-token",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// The partner endpoint is token-authenticated, so a browser origin is not the
+// security boundary: any origin may call it, and the token decides access.
+const CORS_OPTIONS = { allowAnyOrigin: true };
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+// Keyed per token so one integration cannot consume another's budget.
+const rateLimiter = createRateLimiter({
+  limit: limitFromEnv("RATE_LIMIT_CIRLO_PER_MIN", 20),
+  windowMs: 60_000,
+});
+
+const RATE_LIMIT_MESSAGE =
+  "Rate limit reached for this API token. Please retry shortly.";
 
 // Constant-time-ish comparison to avoid timing leaks
 function safeEqual(a: string, b: string) {
@@ -156,8 +164,21 @@ Never invent ingredients to force a recipe. Always respond with valid JSON.`,
 }
 
 serve(async (req) => {
+  const cors = corsHeadersFor(req, CORS_OPTIONS);
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors });
+  }
+
+  // Per-request so the caller's origin is echoed back instead of a wildcard.
+  const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, ...extra, "Content-Type": "application/json" },
+    });
+
+  if (isDisallowedOrigin(req, CORS_OPTIONS)) {
+    return json({ error: "Origin not allowed." }, 403);
   }
 
   if (req.method !== "POST") {
@@ -180,6 +201,16 @@ serve(async (req) => {
 
   if (!presented || !safeEqual(presented, CIRLO_API_TOKEN)) {
     return json({ error: "Unauthorized" }, 401);
+  }
+
+  // Authenticated callers are bucketed per token, not per IP: a server
+  // integration can rotate addresses, and one partner must not be throttled by
+  // another partner's traffic.
+  const limit = rateLimiter.check(`token:${fingerprint(presented)}`);
+  if (!limit.allowed) {
+    return json({ error: RATE_LIMIT_MESSAGE }, 429, {
+      "Retry-After": String(limit.retryAfter),
+    });
   }
 
   try {

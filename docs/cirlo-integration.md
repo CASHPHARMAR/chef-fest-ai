@@ -59,19 +59,19 @@ The token is dedicated to Cirlo only. It is not a Chef Fest user token and carri
 | 401 | missing or invalid token |
 | 405 | method other than `POST` |
 | 422 | request was not about real food — `error` holds a friendly message |
-| 429 | rate limit — retry with backoff |
+| 429 | rate limit; a `Retry-After` header gives the seconds to wait |
 | 502 / 500 | upstream AI or server error |
 
 All errors return `{ "error": "message" }`. Error messages never contain model names or provider details, so they are safe to log but should still not be shown raw to end users except the `422` message, which is written for that purpose.
 
 ## Rate limits and caching
 
-Chef Fest's AI backend runs on a free upstream tier shared with the Chef Fest website: roughly **200 generations per hour, across all callers**. There is no separate quota per token yet, so:
+Chef Fest's AI backend runs on a free upstream tier shared with the Chef Fest website: roughly **200 generations per hour, across all callers**. On top of that, each API token gets its own ceiling of **20 requests per minute**, so one integration cannot crowd out another:
 
+- Exceeding the per-token ceiling returns `429` with a `Retry-After` header. Honour it, back off exponentially, and show a friendly retry message.
 - Do **not** poll or batch-generate. Generate on user action only.
 - Cache results per request signature for at least a few minutes.
-- Treat `429` as a normal, expected answer: back off exponentially and show a friendly retry message.
-- If Cirlo's expected volume is more than occasional, tell us the forecast so we can size the quota before launch rather than after.
+- If Cirlo's expected volume is more than occasional, tell us the forecast so we can size the quota before launch rather than after. The per-token ceiling is configurable per integration via `RATE_LIMIT_CIRLO_PER_MIN`.
 
 ## Example
 

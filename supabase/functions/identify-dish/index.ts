@@ -1,10 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { RATE_LIMIT_MESSAGE } from "../_shared/foodValidation.ts";
+import {
+  clientKey,
+  corsHeadersFor,
+  createRateLimiter,
+  isDisallowedOrigin,
+  limitFromEnv,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+// Vision calls are the most expensive request the app makes, so the budget is
+// tighter than text generation.
+const rateLimiter = createRateLimiter({
+  limit: limitFromEnv("RATE_LIMIT_IDENTIFY_PER_MIN", 8),
+  windowMs: 60_000,
+});
 
 // Vision needs a model that accepts image input. The free text routers
 // (kilo-auto/free) do not, so vision has its own model pair.
@@ -19,12 +28,6 @@ const REQUEST_TIMEOUT_MS = 60_000;
 
 const NOT_FOOD_MESSAGE =
   "We couldn't spot any food in that photo. Try a clearer picture of a dish or ingredients.";
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
 
 const aiHeaders = () => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -156,12 +159,32 @@ async function identifyWithModel(model: string, image: string) {
 }
 
 serve(async (req) => {
+  const cors = corsHeadersFor(req);
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors });
+  }
+
+  // Per-request so the allowed origin is echoed back instead of a wildcard.
+  const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, ...extra, 'Content-Type': 'application/json' },
+    });
+
+  if (isDisallowedOrigin(req)) {
+    return json({ error: 'Origin not allowed.' }, 403);
   }
 
   if (req.method !== 'POST') {
     return json({ error: "Method not allowed" }, 405);
+  }
+
+  const verdict = rateLimiter.check(clientKey(req));
+  if (!verdict.allowed) {
+    return json({ error: RATE_LIMIT_MESSAGE, status: 'rate_limited' }, 429, {
+      'Retry-After': String(verdict.retryAfter),
+    });
   }
 
   try {

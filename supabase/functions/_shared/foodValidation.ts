@@ -21,6 +21,9 @@ export const UNCERTAIN_MESSAGE =
 export const UNAVAILABLE_MESSAGE =
   "Recipe validation is temporarily unavailable. Please try again in a moment.";
 
+export const RATE_LIMIT_MESSAGE =
+  "That's a lot of cooking at once! Please wait a minute before asking for more recipes.";
+
 export const EMPTY_MESSAGE = "Please enter a food name or some ingredients first.";
 
 export const TOO_LONG_MESSAGE = `That is a bit long. Please keep it under ${MAX_INGREDIENTS} characters.`;

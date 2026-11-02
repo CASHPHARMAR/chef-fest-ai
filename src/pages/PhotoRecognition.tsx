@@ -7,6 +7,11 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import RecipeCard from "@/components/RecipeCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RATE_LIMIT_MESSAGE } from "../../supabase/functions/_shared/foodValidation";
+
+/** Distinguishes a throttled request from a genuine outage. */
+const isRateLimited = (error: unknown) =>
+  (error as { context?: Response } | null)?.context?.status === 429;
 
 interface Dish {
   name: string;
@@ -159,9 +164,13 @@ const PhotoRecognition = () => {
       }
     } catch (error) {
       console.error("Error analyzing image:", error);
+      const message = isRateLimited(error)
+        ? RATE_LIMIT_MESSAGE
+        : "We couldn't identify that dish right now. Please try again in a moment.";
+      setNotice(message);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to analyze image",
+        title: isRateLimited(error) ? "One moment" : "Please try again",
+        description: message,
         variant: "destructive",
       });
     } finally {
