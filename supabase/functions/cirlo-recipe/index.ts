@@ -1,24 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   corsHeadersFor,
-  createRateLimiter,
-  fingerprint,
   isDisallowedOrigin,
-  limitFromEnv,
 } from "../_shared/security.ts";
 
 // The partner endpoint is token-authenticated, so a browser origin is not the
 // security boundary: any origin may call it, and the token decides access.
 const CORS_OPTIONS = { allowAnyOrigin: true };
 
-// Keyed per token so one integration cannot consume another's budget.
-const rateLimiter = createRateLimiter({
-  limit: limitFromEnv("RATE_LIMIT_CIRLO_PER_MIN", 20),
-  windowMs: 60_000,
-});
-
-const RATE_LIMIT_MESSAGE =
-  "Rate limit reached for this API token. Please retry shortly.";
+// No per-token rate limit on this endpoint by request of the account owner. The
+// upstream provider still returns 429 when the shared free tier is exhausted, so
+// the 429 path below remains reachable and must stay handled by callers.
 
 // Constant-time-ish comparison to avoid timing leaks
 function safeEqual(a: string, b: string) {
@@ -201,16 +193,6 @@ serve(async (req) => {
 
   if (!presented || !safeEqual(presented, CIRLO_API_TOKEN)) {
     return json({ error: "Unauthorized" }, 401);
-  }
-
-  // Authenticated callers are bucketed per token, not per IP: a server
-  // integration can rotate addresses, and one partner must not be throttled by
-  // another partner's traffic.
-  const limit = rateLimiter.check(`token:${fingerprint(presented)}`);
-  if (!limit.allowed) {
-    return json({ error: RATE_LIMIT_MESSAGE }, 429, {
-      "Retry-After": String(limit.retryAfter),
-    });
   }
 
   try {

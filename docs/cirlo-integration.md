@@ -66,12 +66,12 @@ All errors return `{ "error": "message" }`. Error messages never contain model n
 
 ## Rate limits and caching
 
-Chef Fest's AI backend runs on a free upstream tier shared with the Chef Fest website: roughly **200 generations per hour, across all callers**. On top of that, each API token gets its own ceiling of **20 requests per minute**, so one integration cannot crowd out another:
+Chef Fest's AI backend runs on a free upstream tier shared with the Chef Fest website: roughly **200 generations per hour, across all callers**. Cirlo's token has **no per-minute request limit**, so the upstream tier is the only practical ceiling:
 
-- Exceeding the per-token ceiling returns `429` with a `Retry-After` header. Honour it, back off exponentially, and show a friendly retry message.
+- If the shared tier is exhausted the endpoint returns `429` with a `Retry-After` header. Honour it, back off exponentially, and show a friendly retry message.
 - Do **not** poll or batch-generate. Generate on user action only.
 - Cache results per request signature for at least a few minutes.
-- If Cirlo's expected volume is more than occasional, tell us the forecast so we can size the quota before launch rather than after. The per-token ceiling is configurable per integration via `RATE_LIMIT_CIRLO_PER_MIN`.
+- If Cirlo's expected volume is high, tell us the forecast so the upstream budget can be sized before launch rather than after.
 
 ## Example
 

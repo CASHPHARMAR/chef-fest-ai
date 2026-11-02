@@ -148,21 +148,22 @@ crash.
 
 ## 6. Rate limits
 
-1. **Per token: 20 requests per minute.** Exceeding it returns `429` with a
-   `Retry-After` header (seconds).
-2. **Shared upstream budget: roughly 200 generations per hour** across Chef Fest
-   and all integrations. The per-token ceiling is set below that on purpose, but
-   a heavy hour from another caller can still reach the shared ceiling.
+There is **no per-token request limit** on this endpoint. Call as often as you
+need.
 
-Guidance:
+The only ceiling is the AI provider's shared free tier, roughly **200
+generations per hour** across all callers. If that is exhausted the endpoint
+returns `429` with a `Retry-After` header, exactly as described above.
+
+Practical guidance:
 
 - Generate on user action only — never poll or batch.
 - Cache results per request signature for at least a few minutes.
-- Treat `429` as expected: read `Retry-After`, back off exponentially, and tell
-  the user to try again shortly.
-- If expected volume is more than occasional, send a traffic forecast so the
-  per-token ceiling can be raised **before** launch. It is configurable
-  server-side per integration.
+- Handle `429` anyway: read `Retry-After`, back off exponentially, and show a
+  friendly retry message. It comes from the provider, not from Chef Fest, so it
+  can appear without warning during a heavy hour.
+- If expected volume is high, send a traffic forecast so the upstream budget can
+  be sized before launch.
 
 ---
 
@@ -273,7 +274,7 @@ else:
 
 ## 9. Support
 
-Endpoint, token and limits are managed by Chef Fest. If you need a higher
-per-token ceiling, a different response shape, a longer timeout, or a webhook
-flow, ask before building workarounds. Rotating the token takes effect
+Endpoint, token and limits are managed by Chef Fest. The endpoint has no
+per-token cap; if you need a different response shape, a longer timeout, or a
+webhook flow, ask before building workarounds. Rotating the token takes effect
 immediately and invalidates the old one.
