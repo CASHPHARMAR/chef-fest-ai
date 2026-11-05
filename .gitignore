@@ -23,5 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
+# Live API secret — never commit
+chef-fest-api-key.txt
+
 # Supabase CLI scratch
 supabase/.temp/
